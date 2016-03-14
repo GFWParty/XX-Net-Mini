@@ -7,8 +7,8 @@
 * idea 来自 [XX-Net#2301](https://github.com/XX-net/XX-Net/issues/2301)，模块简单，未部署谷歌appid者请慎重使用！如果熟悉 GoAgent 和 XX-Net 会很快上手。
 
 ## 版本下载：
-* Windows: https://github.com/xyuanmu/XX-Mini/releases
-* Linux: https://github.com/xyuanmu/XX-Mini/archive/master.zip
+* Windows: https://github.com/xyuanmu/XX-Mini/releases/download/1.0/XX-Mini_Win_v1.0.zip
+* Linux: https://github.com/xyuanmu/XX-Mini/releases/download/1.0/XX-Mini_linux_v1.0.zip
 
 ## 使用说明
 ### Windows：
