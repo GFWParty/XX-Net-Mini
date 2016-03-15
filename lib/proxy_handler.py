@@ -112,7 +112,7 @@ class GAEProxyHandler(simple_http_server.HttpServerHandler):
             return self.do_AGENT()
 
         if host in config.HOSTS_FWD or host in config.HOSTS_DIRECT:
-            content_length = 'Content-Length: 0\r\n' if host.endswith('.google.com.hk') else ''
+            content_length = 'Content-Length: 0\r\n' if host.startswith('www.google.com') else ''
             return self.wfile.write(('HTTP/1.1 301\r\nLocation: %s\r\n%s\r\n' % (self.path.replace('http://', 'https://', 1), content_length)).encode())
 
         if host.endswith(config.HOSTS_GAE_ENDSWITH):
