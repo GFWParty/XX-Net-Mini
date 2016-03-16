@@ -424,8 +424,6 @@ class Https_connection_manager(object):
         ssl_sock = None
         ip = ip_port[0]
 
-        connect_control.start_connect_register(high_prior=True)
-
         connect_time = 0
         handshake_time = 0
         time_begin = time.time()
@@ -497,8 +495,6 @@ class Https_connection_manager(object):
             if sock:
                 sock.close()
             return False
-        finally:
-            connect_control.end_connect_register(high_prior=True)
 
     def get_ssl_connection(self, host=''):
         ssl_sock = None

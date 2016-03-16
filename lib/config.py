@@ -21,27 +21,21 @@ class Config(object):
         ConfigParser.RawConfigParser.OPTCRE = re.compile(r'(?P<option>[^=\s][^=]*)\s*(?P<vi>[=])\s*(?P<value>.*)$')
         self.CONFIG = ConfigParser.ConfigParser()
         self.CONFIG_FILENAME = os.path.abspath( os.path.join(current_path, 'proxy.ini'))
+        self.CONFIG.read(self.CONFIG_FILENAME)
 
         self.DATA_PATH = os.path.abspath( os.path.join(current_path, 'data'))
         if not os.path.isdir(self.DATA_PATH):
             self.DATA_PATH = current_path
 
-        # load ../../../data/config.ini, set by web_ui
-        self.CONFIG_USER_FILENAME = os.path.abspath( os.path.join(self.DATA_PATH, 'config.ini'))
-        self.CONFIG.read(self.CONFIG_FILENAME)
-        if os.path.isfile(self.CONFIG_USER_FILENAME):
-            with open(self.CONFIG_USER_FILENAME, 'rb') as fp:
-                content = fp.read()
-                self.CONFIG.readfp(io.BytesIO(content))
-
         # load ../../../data/manual.ini, set by manual
+        self.MANUAL_LOADED = False
         self.CONFIG_MANUAL_FILENAME = os.path.abspath( os.path.join(self.DATA_PATH, 'manual.ini'))
         if os.path.isfile(self.CONFIG_MANUAL_FILENAME):
             with open(self.CONFIG_MANUAL_FILENAME, 'rb') as fp:
                 content = fp.read()
                 try:
                     self.CONFIG.readfp(io.BytesIO(content))
-                    xlog.info("load manual.ini success")
+                    self.MANUAL_LOADED = 'manual.ini'
                 except Exception as e:
                     xlog.exception("data/manual.ini load error:%s", e)
 
@@ -92,20 +86,16 @@ class Config(object):
         self.PAC_PORT = self.CONFIG.getint('pac', 'port')
         self.PAC_FILE = self.CONFIG.get('pac', 'file').lstrip('/')
         self.PAC_GFWLIST = self.CONFIG.get('pac', 'gfwlist')
-        self.PAC_ADBLOCK = self.CONFIG.get('pac', 'adblock') if self.CONFIG.has_option('pac', 'adblock') else ''
+        self.PAC_ADMODE = self.CONFIG.getint('pac', 'admode')
+        self.PAC_ADBLOCK = self.CONFIG.get('pac', 'adblock') if self.PAC_ADMODE else 0
         self.PAC_EXPIRED = self.CONFIG.getint('pac', 'expired')
-        self.pac_url = 'http://%s:%d/%s\n' % (self.PAC_IP, self.PAC_PORT, self.PAC_FILE)
-
-        self.CONTROL_ENABLE = self.CONFIG.getint('control', 'enable')
-        self.CONTROL_IP = self.CONFIG.get('control', 'ip')
-        self.CONTROL_PORT = self.CONFIG.getint('control', 'port')
 
         self.PROXY_ENABLE = self.CONFIG.getint('proxy', 'enable')
         self.PROXY_TYPE = self.CONFIG.get('proxy', 'type')
         self.PROXY_HOST = self.CONFIG.get('proxy', 'host')
         self.PROXY_PORT = self.CONFIG.get('proxy', 'port')
         if self.PROXY_PORT == "":
-            self.PROXY_PORT = 0
+            self.PROXY_PORT = 80
         else:
             self.PROXY_PORT = int(self.PROXY_PORT)
         self.PROXY_USER = self.CONFIG.get('proxy', 'user')
@@ -121,7 +111,6 @@ class Config(object):
         self.record_ip_history = self.CONFIG.getint('google_ip', 'record_ip_history')
 
         self.https_max_connect_thread = config.CONFIG.getint("connect_manager", "https_max_connect_thread")
-        self.connect_interval = config.CONFIG.getint("connect_manager", "connect_interval")
 
         self.log_file = config.CONFIG.getint("system", "log_file")
 
@@ -134,4 +123,3 @@ class Config(object):
 
 config = Config()
 config.load()
-

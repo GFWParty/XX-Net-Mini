@@ -35,7 +35,7 @@ from scan_ip_log import scan_ip_log
 
 class IpManager():
 
-    def __init__(self):
+    def check(self):
         self.scan_thread_lock = threading.Lock()
         self.ip_lock = threading.Lock()
         self.ip_range = google_ip_range.ip_range
@@ -537,9 +537,7 @@ class IpManager():
                 if ip in self.ip_dict:
                     continue
 
-                connect_control.start_connect_register()
                 result = check_ip.test_gae_ip(ip)
-                connect_control.end_connect_register()
                 if not result:
                     continue
 
@@ -623,9 +621,7 @@ class IpManager():
             except:
                 break
 
-            connect_control.start_connect_register()
             result = check_ip.test_gae_ip(ip)
-            connect_control.end_connect_register()
             if not result:
                 self.ip_lock.acquire()
                 try:

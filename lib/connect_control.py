@@ -4,7 +4,6 @@ import threading
 import sys
 
 from config import config
-import env_info
 
 from xlog import getLogger
 xlog = getLogger("gae_proxy")
@@ -16,94 +15,6 @@ xlog = getLogger("gae_proxy")
 # if gae_proxy wants to be up, 'keep_running' should NOT be False
 keep_running = True
 
-# =============================================
-# concurrent connect control
-# Windows10 will block sound when too many concurrent connect out in the same time.
-# so when user request web, scan thread will stop to reduce concurrent action.
-
-
-def get_connect_interval():
-    if sys.platform != "win32":
-        return 0
-
-    win_version = env_info.win32_version()
-    if win_version == 10:
-        xlog.info("detect Win10, enable connect concurent control, interval:%d", config.connect_interval)
-        return config.connect_interval
-
-    return 0
-
-connect_interval = get_connect_interval()
-
-ccc_lock = threading.Lock()
-high_prior_lock = []
-low_prior_lock = []
-high_prior_connecting_num = 0
-low_prior_connecting_num = 0
-last_connect_time = 0
-
-
-def start_connect_register(high_prior=False):
-    global high_prior_connecting_num, low_prior_connecting_num, last_connect_time
-    if not connect_interval:
-        return
-
-    ccc_lock.acquire()
-    try:
-        if high_prior_connecting_num + low_prior_connecting_num > config.https_max_connect_thread:
-            atom_lock = threading.Lock()
-            atom_lock.acquire()
-            if high_prior:
-                high_prior_lock.append(atom_lock)
-            else:
-                low_prior_lock.append(atom_lock)
-            ccc_lock.release()
-            atom_lock.acquire()
-
-            ccc_lock.acquire()
-
-        last_connect_interval = time.time() - last_connect_time
-        if last_connect_interval < 0:
-            xlog.error("last_connect_interval:%f", last_connect_interval)
-            return
-
-        if last_connect_interval < connect_interval/1000.0:
-            wait_time = connect_interval/1000.0 - last_connect_interval
-            time.sleep(wait_time)
-
-        if high_prior:
-            high_prior_connecting_num += 1
-        else:
-            low_prior_connecting_num += 1
-    finally:
-        last_connect_time = time.time()
-        ccc_lock.release()
-
-
-def end_connect_register(high_prior=False):
-    global high_prior_connecting_num, low_prior_connecting_num
-    if not connect_interval:
-        return
-
-    ccc_lock.acquire()
-    try:
-        if high_prior:
-            high_prior_connecting_num -= 1
-        else:
-            low_prior_connecting_num -= 1
-
-        if high_prior_connecting_num + low_prior_connecting_num < config.https_max_connect_thread:
-            if len(high_prior_lock):
-                atom_lock = high_prior_lock.pop()
-                atom_lock.release()
-                return
-
-            if len(low_prior_lock):
-                atom_lock = low_prior_lock.pop()
-                atom_lock.release()
-                return
-    finally:
-        ccc_lock.release()
 
 # =============================================
 # this design is for save resource when browser have no request for long time.

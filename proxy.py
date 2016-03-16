@@ -33,27 +33,12 @@
 #      cnfuyu            <cnfuyu@gmail.com>
 #      cuixin            <steven.cuixin@gmail.com>
 
-
-
+__version__ = '1.1'
 
 import sys
 import os
 
 sys.dont_write_bytecode = True
-
-current_path = os.path.dirname(os.path.abspath(__file__))
-data_path = os.path.join(current_path, 'data')
-if not os.path.isdir(data_path): os.mkdir(data_path)
-
-linux_lib = os.path.abspath( os.path.join(current_path, 'lib'))
-sys.path.append(linux_lib)
-
-import time
-import traceback
-import platform
-import random
-import threading
-import urllib2
 
 __file__ = os.path.abspath(__file__)
 if os.path.islink(__file__):
@@ -61,23 +46,58 @@ if os.path.islink(__file__):
 work_path = os.path.dirname(os.path.abspath(__file__))
 os.chdir(work_path)
 
+sys.path.append(os.path.abspath( os.path.join(work_path, 'lib')))
+if sys.platform.startswith("linux"): sys.path.append(work_path + '/lib.egg/lib/')
 
 from config import config
+from OpenSSL import version as openssl_version
+from pac_server import PACServerHandler, ProxyUtil
 
 from xlog import getLogger
 xlog = getLogger("gae_proxy")
 xlog.set_buffer(500)
+
+data_path = os.path.join(work_path, 'data')
+if not os.path.isdir(data_path): os.mkdir(data_path)
+
 if config.log_file:
     log_file = os.path.join(data_path, "local.log")
     xlog.set_file(log_file)
 
-from cert_util import CertUtil
-import pac_server
+def summary():
+    appids = '|'.join(config.GAE_APPIDS)
+    if len(appids) > 56:
+        appids = appids[:55] + '..'
+
+    info  = '-'*80
+    info += '\nXX-Mini Version     : %s (python/%s pyopenssl/%s)\n' % (__version__, sys.version.split()[0], openssl_version.__version__)
+    info += 'Listen Address      : %s:%d\n' % (config.LISTEN_IP if config.LISTEN_IP == '127.0.0.1' else ProxyUtil.get_listen_ip(), config.LISTEN_PORT)
+    info += 'Setting File        : %sproxy.ini\n' % (config.MANUAL_LOADED + '/') if config.MANUAL_LOADED else ''
+    info += '%s Proxy     : %s:%s\n' % (config.PROXY_TYPE, config.PROXY_HOST, config.PROXY_PORT) if config.PROXY_ENABLE else ''
+    info += 'GAE APPID           : %s\n' % appids
+    info += 'Pac Server          : http://%s:%d/%s\n' % (config.PAC_IP if config.PAC_IP == '127.0.0.1' else ProxyUtil.get_listen_ip(), config.PAC_PORT, config.PAC_FILE) if config.PAC_ENABLE else ''
+    info += 'Pac File            : file://%s\n' % os.path.abspath(os.path.join(data_path, config.PAC_FILE)) if config.PAC_ENABLE else ''
+    info += '-'*80
+    return info
+
+xlog.info(summary())
+xlog.set_time()
+if config.LISTEN_DEBUGINFO:
+    xlog.set_debug()
+
+import time
+import traceback
+import random
+import threading
+import urllib2
 import simple_http_server
 import proxy_handler
 import connect_control
-import env_info
 import connect_manager
+from cert_util import CertUtil
+from google_ip_range import ip_range
+from google_ip import google_ip
+from check_local_network import _simple_check_worker as simple_check_worker
 from gae_handler import spawn_later
 
 
@@ -144,12 +164,12 @@ def pre_start():
             pass
     elif os.name == 'nt':
         import ctypes
-        ctypes.windll.kernel32.SetConsoleTitleW(u'GoAgent ')
+        ctypes.windll.kernel32.SetConsoleTitleW(u'GoAgent v%s' % __version__)
         if not config.LISTEN_VISIBLE:
             ctypes.windll.user32.ShowWindow(ctypes.windll.kernel32.GetConsoleWindow(), 0)
         else:
             ctypes.windll.user32.ShowWindow(ctypes.windll.kernel32.GetConsoleWindow(), 1)
-        if config.LOVE_ENABLE and random.randint(1, 100) <= 5:
+        if config.LOVE_ENABLE and random.randint(1, 100) <= 20:
             title = ctypes.create_unicode_buffer(1024)
             ctypes.windll.kernel32.GetConsoleTitleW(ctypes.byref(title), len(title)-1)
             ctypes.windll.kernel32.SetConsoleTitleW('%s %s' % (title.value, random.choice(config.LOVE_TIP)))
@@ -173,45 +193,24 @@ def pre_start():
         spawn_later(600, urllib2.build_opener(urllib2.ProxyHandler({})).open, url)
 
 
-def log_info():
-    xlog.info('------------------------------------------------------')
-    xlog.info('Python Version     : %s', platform.python_version())
-    xlog.info('OS                 : %s', env_info.os_detail())
-    xlog.info('Listen Address     : %s:%d', config.LISTEN_IP, config.LISTEN_PORT)
-    if config.CONTROL_ENABLE:
-        xlog.info('Control Address    : %s:%d', config.CONTROL_IP, config.CONTROL_PORT)
-    if config.PROXY_ENABLE:
-        xlog.info('%s Proxy    : %s:%s', config.PROXY_TYPE, config.PROXY_HOST, config.PROXY_PORT)
-    xlog.info('GAE APPID          : %s', '|'.join(config.GAE_APPIDS))
-    if config.PAC_ENABLE:
-        xlog.info('Pac Server         : http://%s:%d/%s', config.PAC_IP, config.PAC_PORT, config.PAC_FILE)
-        #info += 'Pac File           : file://%s\n' % os.path.join(self.DATA_PATH, self.PAC_FILE)
-    xlog.info('------------------------------------------------------')
-
-
 def main():
     global ready
+    for i in range(50):
+        check_network = simple_check_worker()
+        if check_network:
+            break
+        else:
+            time.sleep(3)
+        if (i+1)%5 == 0: xlog.error('Failed to connect to network, please check!')
+        if i+1 == 50: return
+    pre_start()
+
+    ip_range.load()
+    google_ip.check()
 
     connect_control.keep_running = True
-    config.load()
     connect_manager.https_manager.load_config()
-
     xlog.debug("## GAEProxy set keep_running: %s", connect_control.keep_running)
-    # to profile gae_proxy, run proxy.py, visit some web by proxy, then visit http://127.0.0.1:8084/quit to quit and print result.
-    do_profile = False
-    if do_profile:
-        import cProfile, pstats
-        pr = cProfile.Profile()
-        pr.enable()
-
-    global __file__
-    __file__ = os.path.abspath(__file__)
-    if os.path.islink(__file__):
-        __file__ = getattr(os, 'readlink', lambda x: x)(__file__)
-    os.chdir(os.path.dirname(os.path.abspath(__file__)))
-    #xlog.basicConfig(level=xlog.DEBUG if config.LISTEN_DEBUGINFO else xlog.INFO, format='%(levelname)s - %(asctime)s %(message)s', datefmt='[%b %d %H:%M:%S]')
-    pre_start()
-    log_info()
 
     CertUtil.init_ca()
 
@@ -221,10 +220,12 @@ def main():
     proxy_thread.start()
 
     if config.PAC_ENABLE:
-        pac_daemon = simple_http_server.HTTPServer((config.PAC_IP, config.PAC_PORT), pac_server.PACServerHandler)
+        pac_daemon = simple_http_server.HTTPServer((config.PAC_IP, config.PAC_PORT), PACServerHandler)
         pac_thread = threading.Thread(target=pac_daemon.serve_forever)
         pac_thread.setDaemon(True)
         pac_thread.start()
+        urllib2.urlopen('http://127.0.0.1:%d/%s' % (config.PAC_PORT, config.PAC_FILE))
+        #PACServerHandler.do_GET()
 
     ready = True  # checked by launcher.module_init
 
@@ -241,10 +242,6 @@ def main():
         pac_thread.join()
     ready = False  # checked by launcher.module_init
     xlog.debug("## GAEProxy set keep_running: %s", connect_control.keep_running)
-
-    if do_profile:
-        pr.disable()
-        pr.print_stats()
 
 
 # called by launcher/module/stop
