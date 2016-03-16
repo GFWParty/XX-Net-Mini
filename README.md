@@ -6,9 +6,9 @@
 * 代码为 Linux 版本，欢迎提交 commit，提交代码后一段时间内会同步到 Windows 版本提供下载。
 * idea 来自 [XX-Net#2301](https://github.com/XX-net/XX-Net/issues/2301)，模块简单，未部署谷歌appid者请慎重使用！如果熟悉 GoAgent 和 XX-Net 会很快上手。
 
-## 版本下载：
-* Windows: https://github.com/xyuanmu/XX-Mini/releases/download/1.0/XX-Mini_Win_v1.0.zip
-* Linux: https://github.com/xyuanmu/XX-Mini/releases/download/1.0/XX-Mini_linux_v1.0.zip
+## 版本下载
+* Windows: https://github.com/xyuanmu/XX-Mini/releases/download/1.1/XX-Mini_win_v1.1.zip
+* Linux: https://github.com/xyuanmu/XX-Mini/releases/download/1.1/XX-Mini_linux_v1.1.zip
 
 ## 使用说明
 ### Windows：
@@ -23,8 +23,7 @@
 * 接下来即可使用浏览器翻墙，但公共appid不允许观看视频和下载
 * 在 XX-Mini 目录，输入 `python addto-startup.py` 可以添加系统启动项
 
-### manual.ini 配置文件说明：
-* 在 data 目录新建一份配置文件 manual.ini，输入以下代码可自定义设置选项：
+### proxy.ini 配置文件说明：
 ```ini
 [listen]
 ;监听地址，如果需要允许局域网/公网使用，设为0.0.0.0即可
@@ -42,6 +41,9 @@ appid =
 ;appid密码，无可不填
 password = 
 
+;类似于系统 hosts 功能，指定各网站连接方式为 direct 或 gae
+[hosts]
+
 ;下载分流，建议使用默认值
 [autorange]
 ;线程数，当观看视频不流畅可适当增加
@@ -51,10 +53,30 @@ maxsize = 524288
 waitsize = 1048576
 bufsize = 65536
 
+;pac 自动配置脚本
+[pac]
+;是否启用
+enable = 1
+;监听地址，如果需要允许局域网/公网使用，设为0.0.0.0即可
+ip = 127.0.0.1
+;默认使用8086作为代理端口，如有需要可以修改
+port = 8086
+;pac 文件名
+file = proxy.pac
+;是否开启广告拦截模式
+admode = 1
+;广告拦截规则订阅地址
+adblock = https://easylist-downloads.adblockplus.org/easylistchina.txt
+;被墙网站规则订阅地址
+gfwlist = https://raw.githubusercontent.com/gfwlist/gfwlist/master/gfwlist.txt
+;更新时间，以秒计算
+expired = 86400
+
 ;前置代理
 [proxy]
 ;是否启用，改为1启用
 enable = 0
+;代理类型，支持 HTTP HTTPS SOCK4 SOCK5
 type = HTTP
 host = 127.0.0.1
 port = 8888
@@ -75,9 +97,16 @@ ip_connect_interval = 8
 ;单个IP连接数，建议别改，容易使IP失效
 max_links_per_ip = 1
 
+;连接设置，一般无需修改
+[connect_manager]
+;最大连接线程
+https_max_connect_thread = 10
+;最小连接池数值
+https_connection_pool_min = 5
+;最大连接池数值
+https_connection_pool_max = 50
+
 ;设置成 1 会在data目录生成日志文件 local.log，便调试用
 [system]
 log_file = 0
-
-;更多设置参考 proxy.ini 文件
 ```
