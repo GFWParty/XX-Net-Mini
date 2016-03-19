@@ -8,7 +8,6 @@ import Queue
 import os
 import errno
 import logging
-import utils
 import ssl
 
 

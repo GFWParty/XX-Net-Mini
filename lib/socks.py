@@ -66,6 +66,7 @@ import struct
 from errno import EOPNOTSUPP, EINVAL, EAGAIN
 from io import BytesIO, SEEK_CUR
 from collections import Callable
+from ip_utils import check_ip_valid
 import encodings.idna
 
 PROXY_TYPE_SOCKS4 = SOCKS4 = 1
@@ -707,21 +708,6 @@ class socksocket(_BaseSocket):
         if not proxy_port:
             raise GeneralProxyError("Invalid proxy type")
         return proxy_addr, proxy_port
-
-
-import re
-g_ip_check = re.compile(r'^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$')
-def check_ip_valid(ip):
-    global g_ip_check
-    ret = g_ip_check.match(ip)
-    if ret is not None:
-        "each item range: [0,255]"
-        for item in ret.groups():
-            if int(item) > 255:
-                return 0
-        return 1
-    else:
-        return 0
 
 if __name__ == "__main__":
     name = "abc"
