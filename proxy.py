@@ -72,7 +72,7 @@ def summary():
     info  = '-'*80
     info += '\nXX-Mini Version     : %s (python/%s pyopenssl/%s)\n' % (__version__, sys.version.split()[0], openssl_version.__version__)
     info += 'Listen Address      : %s:%d\n' % (config.LISTEN_IP if config.LISTEN_IP == '127.0.0.1' else ProxyUtil.get_listen_ip(), config.LISTEN_PORT)
-    info += 'Setting File        : %sproxy.ini\n' % (config.MANUAL_LOADED + '/') if config.MANUAL_LOADED else ''
+    info += 'Setting File        : %sproxy.ini\n' % (config.MANUAL_LOADED + '/' if config.MANUAL_LOADED else '')
     info += '%s Proxy     : %s:%s\n' % (config.PROXY_TYPE, config.PROXY_HOST, config.PROXY_PORT) if config.PROXY_ENABLE else ''
     info += 'GAE APPID           : %s\n' % appids
     info += 'Pac Server          : http://%s:%d/%s\n' % (config.PAC_IP if config.PAC_IP == '127.0.0.1' else ProxyUtil.get_listen_ip(), config.PAC_PORT, config.PAC_FILE) if config.PAC_ENABLE else ''
