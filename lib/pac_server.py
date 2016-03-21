@@ -11,6 +11,7 @@ import urlparse
 import socket
 import simple_http_server
 
+from config import config
 from xlog import getLogger
 xlog = getLogger("gae_proxy")
 
@@ -48,26 +49,24 @@ function FindProxyForURL(url, host) {
 }
 
 // AUTO-GENERATED RULES, DO NOT MODIFY!
-
 '''
 
-from config import config
-from proxy_dir import current_path
 
 user_pacfile = os.path.join(config.DATA_PATH, config.PAC_FILE)
-data_root = os.path.join(current_path, 'data')
 
-def get_pacfile():
-    if not os.path.isfile(user_pacfile):
-        return False
-    return user_pacfile
+def get_file(filename):
+    user_file = os.path.join(config.DATA_PATH, filename)
+    if os.path.isfile(user_file):
+        return user_file
+    return False
+
 
 def get_opener():
     autoproxy = '127.0.0.1:%s' % config.LISTEN_PORT
 
     import ssl
     if getattr(ssl, "create_default_context", None):
-        cafile = os.path.join(data_root, "CA.crt")
+        cafile = os.path.join(config.DATA_PATH, "CA.crt")
         context = ssl.create_default_context(purpose=ssl.Purpose.SERVER_AUTH,
                                              cafile=cafile)
         https_handler = urllib2.HTTPSHandler(context=context)
@@ -81,7 +80,7 @@ class PacUtil(object):
     """GAEProxy Pac Util"""
 
     @staticmethod
-    def update_pacfile(filename):
+    def update_pacfile():
         opener = get_opener()
 
         listen_ip = config.LISTEN_IP
@@ -92,12 +91,12 @@ class PacUtil(object):
         adblock_content = False
         if config.PAC_ADBLOCK:
             try:
-                xlog.info('try download %r to update_pacfile(%r)', config.PAC_ADBLOCK, filename)
+                xlog.info('try download %r to update pacfile', config.PAC_ADBLOCK)
                 adblock_content = opener.open(config.PAC_ADBLOCK).read()
             except Exception as e:
                 xlog.warn("pac_update download adblock fail:%r", e)
         try:
-            xlog.info('try download %r to update_pacfile(%r)', config.PAC_GFWLIST, filename)
+            xlog.info('try download %r to update pacfile', config.PAC_GFWLIST)
             pac_content = opener.open(config.PAC_GFWLIST).read()
         except Exception as e:
             xlog.warn("pac_update download gfwlist fail:%r", e)
@@ -126,7 +125,7 @@ class PacUtil(object):
             else:
                 content += '\r\nfunction FindProxyForURLByAdblock(url, host) {return "DIRECT";}\r\n'
         except Exception as e:
-            xlog.exception('update_pacfile failed: %r', e)
+            xlog.exception('update pacfile failed: %r', e)
             return
         try:
             autoproxy_content = base64.b64decode(pac_content)
@@ -135,7 +134,7 @@ class PacUtil(object):
             content += '\r\n' + jsrule + '\r\n'
             xlog.info('%r downloaded and parsed', config.PAC_GFWLIST)
         except Exception as e:
-            xlog.exception('update_pacfile failed: %r', e)
+            xlog.exception('update pacfile failed: %r', e)
             return
 
         open(user_pacfile, 'wb').write(content)
@@ -358,8 +357,6 @@ class PacUtil(object):
 
 
 class PACServerHandler(simple_http_server.HttpServerHandler):
-    onepixel = b'GIF89a\x01\x00\x01\x00\x80\xff\x00\xc0\xc0\xc0\x00\x00\x00!\xf9\x04\x01\x00\x00\x00\x00,\x00\x00\x00\x00\x01\x00\x01\x00\x00\x02\x02D\x01\x00;'
-
     def address_string(self):
         return '%s:%s' % self.client_address[:2]
 
@@ -372,54 +369,35 @@ class PACServerHandler(simple_http_server.HttpServerHandler):
         path = urlparse.urlparse(self.path).path # '/proxy.pac'
         filename = os.path.normpath('./' + path) # proxy.pac
 
-        if self.path.startswith(('http://', 'https://')):
-            data = b'HTTP/1.1 200\r\nCache-Control: max-age=86400\r\nExpires:Oct, 01 Aug 2100 00:00:00 GMT\r\nConnection: close\r\n'
-            if filename.endswith(('.jpg', '.gif', '.jpeg', '.bmp')):
-                data += b'Content-Type: image/gif\r\n\r\n' + self.onepixel
+        if filename == config.PAC_FILE:
+            mimetype = 'text/plain'
+            pac_filename = get_file(filename)
+            outdate_time = time.time() - os.path.getmtime(pac_filename) if pac_filename else 99999999
+            if self.path.endswith('.pac?flush') or outdate_time > config.PAC_EXPIRED:
+                thread.start_new_thread(PacUtil.update_pacfile, ())
+            if pac_filename:
+                data = open(pac_filename, 'rb').read()
             else:
-                data += b'\r\n This is the Pac server, not proxy port, use 8087 as proxy port.'
+                return
+            host = self.headers.getheader('Host')
+            host, _, port = host.rpartition(":")
+            data = data.replace('127.0.0.1:8087', host + ":" + str(config.LISTEN_PORT))
+            data = data.replace('127.0.0.1:8086', host + ":" + str(config.PAC_PORT))
+            self.wfile.write(('HTTP/1.1 200\r\nContent-Type: %s\r\nContent-Length: %s\r\n\r\n' % (mimetype, len(data))).encode())
             self.wfile.write(data)
-            xlog.info('%s "%s %s HTTP/1.1" 200 -', self.address_string(), self.command, self.path)
-            return
-
-        # check for '..', which will leak file
-        if re.search(r'(\.{2})', self.path) is not None:
-            self.wfile.write(b'HTTP/1.1 404\r\n\r\n')
-            xlog.warn('%s %s %s haking', self.address_string(), self.command, self.path )
-            return
-
-
-        if filename != 'proxy.pac':
+        elif filename == 'CA.crt':
+            mimetype = 'application/octet-stream'
+            cer_filename = get_file(filename)
+            if cer_filename:
+                data = open(cer_filename, 'rb').read()
+            else:
+                return
+            self.wfile.write(('HTTP/1.1 200\r\nContent-Type: %s\r\nContent-Length: %s\r\n\r\n' % (mimetype, len(data))).encode())
+            self.wfile.write(data)
+        else:
             xlog.warn("pac_server GET %s fail", filename)
             self.wfile.write(b'HTTP/1.1 404\r\n\r\n')
             return
-
-        mimetype = 'text/plain'
-        pac_filename = get_pacfile()
-        outdate_time = time.time() - os.path.getmtime(pac_filename) if pac_filename else 99999999
-        if self.path.endswith('.pac?flush') or outdate_time > config.PAC_EXPIRED:
-            thread.start_new_thread(PacUtil.update_pacfile, (user_pacfile,))
-
-        if pac_filename:
-            data = open(pac_filename, 'rb').read()
-        else:
-            return
-
-        host = self.headers.getheader('Host')
-        host, _, port = host.rpartition(":")
-        gae_proxy_proxy = host + ":" + str(config.LISTEN_PORT)
-        pac_proxy = host + ":" + str(config.PAC_PORT)
-        data = data.replace('127.0.0.1:8087', gae_proxy_proxy)
-        data = data.replace('127.0.0.1:8086', pac_proxy)
-        self.wfile.write(('HTTP/1.1 200\r\nContent-Type: %s\r\nContent-Length: %s\r\n\r\n' % (mimetype, len(data))).encode())
-        self.wfile.write(data)
-
-    def send_file(self, filename, mimetype):
-        with open(filename, 'rb') as fp:
-            data = fp.read()
-        if data:
-            self.wfile.write(('HTTP/1.1 200\r\nContent-Type: %s\r\nContent-Length: %s\r\n\r\n' % (mimetype, len(data))).encode())
-            self.wfile.write(data)
 
 
 class ProxyUtil(object):

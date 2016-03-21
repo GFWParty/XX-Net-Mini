@@ -69,13 +69,18 @@ def summary():
     if len(appids) > 56:
         appids = appids[:55] + '..'
 
+    pac_ip = config.PAC_IP
+    if config.PAC_IP != '127.0.0.1':
+        pac_ip = ProxyUtil.get_listen_ip()
+
     info  = '-'*80
     info += '\nXX-Mini Version     : %s (python/%s pyopenssl/%s)\n' % (__version__, sys.version.split()[0], openssl_version.__version__)
     info += 'Listen Address      : %s:%d\n' % (config.LISTEN_IP if config.LISTEN_IP == '127.0.0.1' else ProxyUtil.get_listen_ip(), config.LISTEN_PORT)
     info += 'Setting File        : %sproxy.ini\n' % (config.MANUAL_LOADED + '/' if config.MANUAL_LOADED else '')
     info += '%s Proxy     : %s:%s\n' % (config.PROXY_TYPE, config.PROXY_HOST, config.PROXY_PORT) if config.PROXY_ENABLE else ''
     info += 'GAE APPID           : %s\n' % appids
-    info += 'Pac Server          : http://%s:%d/%s\n' % (config.PAC_IP if config.PAC_IP == '127.0.0.1' else ProxyUtil.get_listen_ip(), config.PAC_PORT, config.PAC_FILE) if config.PAC_ENABLE else ''
+    info += 'Pac Server          : http://%s:%d/%s\n' % (pac_ip, config.PAC_PORT, config.PAC_FILE) if config.PAC_ENABLE else ''
+    info += 'CA File             : http://%s:%d/%s\n' % (pac_ip, config.PAC_PORT, 'CA.crt') if config.PAC_ENABLE else ''
     info += 'Pac File            : file://%s\n' % os.path.abspath(os.path.join(data_path, config.PAC_FILE)) if config.PAC_ENABLE else ''
     info += '-'*80
     return info
@@ -225,7 +230,6 @@ def main():
         pac_thread.setDaemon(True)
         pac_thread.start()
         urllib2.urlopen('http://127.0.0.1:%d/%s' % (config.PAC_PORT, config.PAC_FILE))
-        #PACServerHandler.do_GET()
 
     ready = True  # checked by launcher.module_init
 
