@@ -6,6 +6,7 @@ import errno
 import socket
 import ssl
 import urlparse
+import re
 
 import OpenSSL
 NetWorkIOError = (socket.error, ssl.SSLError, OpenSSL.SSL.Error, OSError)
@@ -20,8 +21,6 @@ from config import config
 import gae_handler
 import direct_handler
 from connect_control import touch_active
-import web_control
-import re
 
 
 class GAEProxyHandler(simple_http_server.HttpServerHandler):
@@ -79,14 +78,7 @@ class GAEProxyHandler(simple_http_server.HttpServerHandler):
         host = self.headers.get('Host', '')
         host_ip, _, port = host.rpartition(':')
         if host_ip == "127.0.0.1" and port == str(config.LISTEN_PORT):
-            controler = web_control.ControlHandler(self.client_address, self.headers, self.command, self.path, self.rfile, self.wfile)
-            if self.command == "GET":
-                return controler.do_GET()
-            elif self.command == "POST":
-                return controler.do_POST()
-            else:
-                xlog.warn("method not defined: %s", self.command)
-                return
+            return self.wfile.write(('HTTP/1.1 301\r\nContent-Length: 0\r\n\r\n').encode())
 
         if self.path[0] == '/' and host:
             self.path = 'http://%s%s' % (host, self.path)

@@ -396,8 +396,7 @@ class PACServerHandler(simple_http_server.HttpServerHandler):
             self.wfile.write(data)
         else:
             xlog.warn("pac_server GET %s fail", filename)
-            self.wfile.write(b'HTTP/1.1 404\r\n\r\n')
-            return
+            return self.wfile.write(('HTTP/1.1 301\r\nContent-Length: 0\r\n\r\n').encode())
 
 
 class ProxyUtil(object):
