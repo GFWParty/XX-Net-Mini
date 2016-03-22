@@ -7,8 +7,8 @@
 * idea 来自 [XX-Net#2301](https://github.com/XX-net/XX-Net/issues/2301)，模块简单，未部署谷歌appid者请慎重使用！如果熟悉 GoAgent 和 XX-Net 会很快上手。
 
 ## 版本下载
-* Windows: https://github.com/xyuanmu/XX-Mini/releases/download/1.1/XX-Mini_win_v1.1.zip
-* Linux: https://github.com/xyuanmu/XX-Mini/releases/download/1.1/XX-Mini_linux_v1.1.zip
+* Windows: https://github.com/xyuanmu/XX-Mini/releases/download/1.1/XX-Mini_win_v1.2.zip
+* Linux: https://github.com/xyuanmu/XX-Mini/releases/download/1.1/XX-Mini_linux_v1.2.zip
 
 ## 使用说明
 ### Windows：
@@ -23,6 +23,10 @@
 * 接下来即可使用浏览器翻墙，但公共appid不允许观看视频和下载
 * 在 XX-Mini 目录，输入 `python addto-startup.py` 可以添加系统启动项
 
+### egg 文件打包方法：
+* 将lib文件夹和 `__genpy__.py` 打包成 lib.zip 压缩包
+* 修改压缩包后缀 zip 为 egg 即可
+
 ### proxy.ini 配置文件说明：
 ```ini
 [listen]
@@ -30,6 +34,10 @@
 ip = 127.0.0.1
 ;默认使用8087作为代理端口，如有需要可以修改
 port = 8087
+;局域网代理认证用户名，留空不开启认证
+username =
+;代理认证密码
+password =
 ;启动后是否隐藏 goagent 窗口，0为隐藏（最小化至托盘），1为显示
 visible = 0
 ;是否显示详细debug信息
@@ -41,8 +49,13 @@ appid =
 ;appid密码，无可不填
 password = 
 
-;类似于系统 hosts 功能，指定各网站连接方式为 direct 或 gae
+;类似于系统 hosts 功能，指定各网站连接方式为 direct(直接通过IP连接) 或 gae(通过gae连接)
 [hosts]
+;表示直接通过IP连接 www.google.com，但非 www 开头的不使用直连
+www.google.com = direct
+;前面加 . 表示只要匹配域名即使用 gae 模式
+.commondatastorage.googleapis.com = gae
+
 
 ;下载分流，建议使用默认值
 [autorange]
