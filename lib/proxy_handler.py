@@ -28,6 +28,7 @@ class GAEProxyHandler(simple_http_server.HttpServerHandler):
     gae_support_methods = tuple(["GET", "POST", "HEAD", "PUT", "DELETE", "PATCH"])
     bufsize = 256*1024
     max_retry = 3
+    handler_filters = []
 
     def setup(self):
         self.__class__.do_GET = self.__class__.do_METHOD

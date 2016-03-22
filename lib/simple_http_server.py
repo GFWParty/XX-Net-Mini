@@ -9,17 +9,78 @@ import sys
 import select
 import time
 import json
+import BaseHTTPServer
+import base64
 
 
 import xlog
 logging = xlog.Logger()
 
 
-class HttpServerHandler():
+class BaseFetchPlugin(object):
+    """abstract fetch plugin"""
+    def __init__(self, *args, **kwargs):
+        pass
+
+    def handle(self, handler, **kwargs):
+        raise NotImplementedError
+
+
+class MockFetchPlugin(BaseFetchPlugin):
+    """mock fetch plugin"""
+    def handle(self, handler, status=400, headers={}, body=''):
+        """mock response"""
+        logging.info('%s "MOCK %s %s %s" %d %d', handler.address_string(), handler.command, handler.path, handler.protocol_version, status, len(body))
+        handler.send_response(status)
+        for key, value in headers.items():
+            handler.send_header(key, value)
+        handler.end_headers()
+        handler.wfile.write(body)
+
+
+class BaseProxyHandlerFilter(object):
+    """base proxy handler filter"""
+    def filter(self, handler):
+        raise NotImplementedError
+
+
+class AuthFilter(BaseProxyHandlerFilter):
+    """authorization filter"""
+    auth_info = "Proxy authentication required"
+    white_list = set(['127.0.0.1'])
+
+    def __init__(self, username, password):
+        self.username = username
+        self.password = password
+
+    def check_auth_header(self, auth_header):
+        method, _, auth_data = auth_header.partition(' ')
+        if method == 'Basic':
+            username, _, password = base64.b64decode(auth_data).partition(':')
+            if username == self.username and password == self.password:
+                return True
+        return False
+
+    def filter(self, handler):
+        if self.white_list and handler.client_address[0] in self.white_list:
+            return None
+        auth_header = handler.headers.get('Proxy-Authorization') or getattr(handler, 'auth_header', None)
+        if auth_header and self.check_auth_header(auth_header):
+            handler.auth_header = auth_header
+        else:
+            headers = {'Access-Control-Allow-Origin': '*',
+                       'Proxy-Authenticate': 'Basic realm="%s"' % self.auth_info,
+                       'Content-Length': '0',
+                       'Connection': 'keep-alive'}
+            return 'mock', {'status': 407, 'headers': headers, 'body': ''}
+
+
+class HttpServerHandler(BaseHTTPServer.BaseHTTPRequestHandler):
     default_request_version = "HTTP/1.1"
     MessageClass = mimetools.Message
     rbufsize = -1
     wbufsize = 0
+    handler_filters = []
 
     def __init__(self, sock, client, args):
         self.connection = sock
@@ -125,6 +186,14 @@ class HttpServerHandler():
 
             self.parse_request()
 
+            for handler_filter in self.handler_filters:
+                action = handler_filter.filter(self)
+                if not action:
+                    continue
+                if not isinstance(action, tuple):
+                    raise TypeError('%s must return a tuple, not %r' % (handler_filter, action))
+                return MockFetchPlugin().handle(self, **action[1])
+
             if self.command == "GET":
                 self.do_GET()
             elif self.command == "POST":
@@ -191,31 +260,6 @@ class HttpServerHandler():
         if message:
             self.wfile.write(message)
 
-    def send_response(self, mimetype="", content="", headers="", status=200):
-        data = []
-        data.append('HTTP/1.1 %d\r\n' % status)
-        if len(mimetype):
-            data.append('Content-Type: %s\r\n' % mimetype)
-
-        data.append('Content-Length: %s\r\n' % len(content))
-        if len(headers):
-            if isinstance(headers, dict):
-                for key in headers:
-                    data.append("%s: %s\r\n" % (key, headers[key]))
-            elif isinstance(headers, basestring):
-                data.append(headers)
-        data.append("\r\n")
-
-        if len(content) < 1024:
-            data.append(content)
-            data_str = "".join(data)
-            self.wfile.write(data_str)
-        else:
-            data_str = "".join(data)
-            self.wfile.write(data_str)
-            if len(content):
-                self.wfile.write(content)
-
     def send_file(self, filename, mimetype):
         try:
             if not os.path.isfile(filename):
@@ -237,10 +281,6 @@ class HttpServerHandler():
         except:
             pass
             #logging.warn("download broken")
-
-    def response_json(self, res_arr):
-        data = json.dumps(res_arr, indent=0, sort_keys=True)
-        self.send_response('application/json', data)
 
 
 class HTTPServer():

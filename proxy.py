@@ -33,7 +33,7 @@
 #      cnfuyu            <cnfuyu@gmail.com>
 #      cuixin            <steven.cuixin@gmail.com>
 
-__version__ = '1.1'
+__version__ = '1.2'
 
 import sys
 import os
@@ -219,6 +219,8 @@ def main():
 
     CertUtil.init_ca()
 
+    if config.LISTEN_USERNAME:
+        proxy_handler.GAEProxyHandler.handler_filters.insert(0, simple_http_server.AuthFilter(config.LISTEN_USERNAME, config.LISTEN_PASSWORD))
     proxy_daemon = simple_http_server.HTTPServer((config.LISTEN_IP, config.LISTEN_PORT), proxy_handler.GAEProxyHandler)
     proxy_thread = threading.Thread(target=proxy_daemon.serve_forever)
     proxy_thread.setDaemon(True)
