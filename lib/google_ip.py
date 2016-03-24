@@ -54,6 +54,7 @@ class IpManager():
         self.iplist_saved_time = 0
         self.last_sort_time_for_gws = 0 # keep status for avoid wast too many cpu
         self.good_ip_num = 0 # only success ip num
+        self.bad_ip_num = 0
 
         # ip => {
                  # 'handshake_time'=>?ms,
@@ -176,7 +177,7 @@ class IpManager():
         self.last_sort_time_for_gws = time.time()
         try:
             self.good_ip_num = 0
-            self.bad_ip_num  = 0
+            self.bad_ip_num = 0
             ip_rate = {}
             for ip in self.ip_dict:
                 if 'gws' not in self.ip_dict[ip]['server']:
@@ -185,7 +186,7 @@ class IpManager():
                 if self.ip_dict[ip]['fail_times'] == 0:
                     self.good_ip_num += 1
                 else:
-                    self.bad_ip_num  += 1
+                    self.bad_ip_num += 1
 
             ip_time = sorted(ip_rate.items(), key=operator.itemgetter(1))
             self.gws_ip_list = [ip for ip,rate in ip_time]
@@ -328,11 +329,13 @@ class IpManager():
                 if self.ip_dict[ip]['fail_time'] > 0:
                     self.ip_dict[ip]['fail_time'] = 0
                     self.good_ip_num += 1
+                    self.bad_ip_num -= 1
                 self.append_ip_history(ip, handshake_time)
                 return False
 
             self.iplist_need_save = True
             self.good_ip_num += 1
+            self.bad_ip_num -= 1
 
             self.ip_dict[ip] = {'handshake_time':handshake_time, "fail_times":fail_times,
                                     "transfered_data":0, 'data_active':0,
@@ -382,6 +385,7 @@ class IpManager():
                 self.ip_dict[ip]['success_time'] = time_now
                 if self.ip_dict[ip]['fail_times'] > 0:
                     self.good_ip_num += 1
+                    self.bad_ip_num -= 1
                 self.ip_dict[ip]['fail_times'] = 0
                 self.append_ip_history(ip, handshake_time)
                 self.ip_dict[ip]["fail_time"] = 0
@@ -407,6 +411,7 @@ class IpManager():
             if force_remove:
                 if self.ip_dict[ip]['fail_times'] == 0:
                     self.good_ip_num -= 1
+                    self.bad_ip_num += 1
                 del self.ip_dict[ip]
 
                 if ip in self.gws_ip_list:
@@ -436,6 +441,7 @@ class IpManager():
 
             if self.ip_dict[ip]['fail_times'] == 0:
                 self.good_ip_num -= 1
+                self.bad_ip_num += 1
             self.ip_dict[ip]['fail_times'] += 1
             self.append_ip_history(ip, "fail")
             self.ip_dict[ip]["fail_time"] = time_now
@@ -486,6 +492,7 @@ class IpManager():
                     if self.ip_dict[ip]['fail_times']:
                         self.ip_dict[ip]['fail_times'] = 0
                         self.good_ip_num += 1
+                        self.bad_ip_num -= 1
                 except:
                     pass
                 continue
@@ -634,6 +641,7 @@ class IpManager():
 
                     if self.ip_dict[ip]['fail_times'] == 0:
                         self.good_ip_num -= 1
+                        self.bad_ip_num += 1
                     self.ip_dict[ip]['fail_times'] += 1
                     self.ip_dict[ip]["fail_time"] = time.time()
                 finally:
