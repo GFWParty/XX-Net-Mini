@@ -176,6 +176,7 @@ class IpManager():
         self.last_sort_time_for_gws = time.time()
         try:
             self.good_ip_num = 0
+            self.bad_ip_num  = 0
             ip_rate = {}
             for ip in self.ip_dict:
                 if 'gws' not in self.ip_dict[ip]['server']:
@@ -183,9 +184,12 @@ class IpManager():
                 ip_rate[ip] = self.ip_dict[ip]['handshake_time'] + (self.ip_dict[ip]['fail_times'] * 1000)
                 if self.ip_dict[ip]['fail_times'] == 0:
                     self.good_ip_num += 1
+                else:
+                    self.bad_ip_num  += 1
 
             ip_time = sorted(ip_rate.items(), key=operator.itemgetter(1))
             self.gws_ip_list = [ip for ip,rate in ip_time]
+            xlog.info('good ip num:%d, bad ip num:%s', self.max_good_ip_num if self.good_ip_num > self.max_good_ip_num else self.good_ip_num, self.bad_ip_num)
 
         except Exception as e:
             xlog.error("try_sort_ip_by_handshake_time:%s", e)
