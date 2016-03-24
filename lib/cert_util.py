@@ -299,7 +299,8 @@ class CertUtil(object):
                 win32elevate.elevateAdminRun(os.path.abspath(__file__))
                 return True
             else:
-                CertUtil.win32_notify(msg=u'已经导入GoAgent证书，请重启浏览器.', title=u'Restart browser need.')            return True if ret else False
+                CertUtil.win32_notify(msg=u'已经导入GoAgent证书，请重启浏览器.', title=u'Restart browser need.')
+            return True if ret else False
 
     @staticmethod
     def remove_windows_ca(name):
