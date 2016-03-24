@@ -122,7 +122,7 @@ class IpManager():
             try:
                 if line.startswith("#"):
                     continue
-                    
+
                 str_l = line.split(' ')
 
                 if len(str_l) < 4:
@@ -407,7 +407,7 @@ class IpManager():
 
                 if ip in self.gws_ip_list:
                     self.gws_ip_list.remove(ip)
-                
+
                 xlog.info("remove ip:%s left amount:%d gws_num:%d", ip, len(self.ip_dict), len(self.gws_ip_list))
                 return
 
@@ -439,7 +439,7 @@ class IpManager():
             check_local_network.triger_check_network()
             self.to_check_ip_queue.put((ip, time_now + 10))
             xlog.debug("report_connect_fail:%s", ip)
-        
+
         except Exception as e:
             xlog.exception("report_connect_fail err:%s", e)
         finally:

@@ -46,7 +46,7 @@ class APPID_manager(object):
                 xlog.warn("no usable appid left")
                 time.sleep(60)
                 return None
-                
+
             if time.time() - self.last_reset_time < 600:
                 xlog.warn("all appid out of quota, need 10 min to reset")
                 return None

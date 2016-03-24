@@ -425,7 +425,6 @@ if __name__ == "__main__":
         data_path = sys.argv[1]
     else:
         data_path = "."
-        
     try:
         main(data_path=data_path)
     except Exception:
@@ -433,4 +432,3 @@ if __name__ == "__main__":
         traceback.print_exc(file=sys.stdout)
     except KeyboardInterrupt:
         sys.exit()
-    

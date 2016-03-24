@@ -22,7 +22,7 @@ class IpRange(object):
         self.load_ip_range()
 
     def load_range_content(self):
-        
+
         if os.path.isfile(self.user_range_file):
             self.range_file = self.user_range_file
         else:

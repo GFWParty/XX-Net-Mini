@@ -113,7 +113,7 @@ class HTTP_client():
                     except Exception as e:
                         xlog.warn("Transfer-Encoding e:%r ", e)
                         return "", False, response
-                    
+
 
                     if not data:
                         break
@@ -176,7 +176,7 @@ class HTTP_client():
             payload = request_data.encode() + payload
         else:
             conn.sock.send(request_data.encode())
-            
+
         payload_len = len(payload)
         start = 0
         while start < payload_len:
