@@ -83,7 +83,7 @@ class PacUtil(object):
     def update_pacfile():
         opener = get_opener()
 
-        listen_ip = config.LISTEN_IP
+        listen_ip = '127.0.0.1'
         autoproxy = '%s:%s' % (listen_ip, config.LISTEN_PORT)
         blackhole = '%s:%s' % (listen_ip, config.PAC_PORT)
         default = 'PROXY %s:%s' % (config.PROXY_HOST, config.PROXY_PORT) if config.PROXY_ENABLE else 'DIRECT'
