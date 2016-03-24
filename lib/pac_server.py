@@ -383,7 +383,7 @@ class PACServerHandler(simple_http_server.HttpServerHandler):
             self.wfile.write(('HTTP/1.1 200\r\nContent-Type: %s\r\nContent-Length: %s\r\n\r\n' % (mimetype, len(data))).encode())
             self.wfile.write(data)
         elif filename == 'ca.crt':
-            mimetype = 'application/octet-stream'
+            mimetype = 'application/x-x509-ca-cert'
             cer_filename = get_file(filename)
             if cer_filename:
                 data = open(cer_filename, 'rb').read()
