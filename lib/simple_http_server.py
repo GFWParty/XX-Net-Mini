@@ -42,7 +42,7 @@ class AuthFilter(BaseProxyHandlerFilter):
 
     def filter(self, handler):
         addr = handler.client_address[0]
-        host = handler.headers.get('Host').partition(':')[0]
+        host = handler.headers.get('Host').partition(':')[0] if handler.headers.get('Host') else ''
         if addr in self.white_list or host in self.white_list:
             return None
         auth_header = handler.headers.get('Proxy-Authorization') or getattr(handler, 'auth_header', None)
