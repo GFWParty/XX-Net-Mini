@@ -6,6 +6,7 @@ import ConfigParser
 import os
 import re
 import io
+import socket
 
 
 from xlog import getLogger
@@ -121,7 +122,20 @@ class Config(object):
         # launcher will wait import ready then open browser to show status, check update etc
         self.cert_import_ready = False
 
-
+    @staticmethod
+    def get_listen_ip():
+        listen_ip = '127.0.0.1'
+        sock = None
+        try:
+            sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+            sock.connect(('8.8.8.8', 53))
+            listen_ip = sock.getsockname()[0]
+        except StandardError:
+            pass
+        finally:
+            if sock:
+                sock.close()
+        return listen_ip
 
 config = Config()
 config.load()

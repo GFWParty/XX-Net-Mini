@@ -33,7 +33,7 @@
 #      cnfuyu            <cnfuyu@gmail.com>
 #      cuixin            <steven.cuixin@gmail.com>
 
-__version__ = '1.2'
+__version__ = '1.2.1'
 
 import sys
 import os
@@ -51,7 +51,7 @@ if sys.platform.startswith("linux"): sys.path.append(work_path + '/lib.egg/lib/'
 
 from config import config
 from OpenSSL import version as openssl_version
-from pac_server import PACServerHandler, ProxyUtil
+from pac_server import PACServerHandler
 
 from xlog import getLogger
 xlog = getLogger("gae_proxy")
@@ -71,11 +71,11 @@ def summary():
 
     pac_ip = config.PAC_IP
     if config.PAC_IP != '127.0.0.1':
-        pac_ip = ProxyUtil.get_listen_ip()
+        pac_ip = config.get_listen_ip()
 
     info  = '-'*80
     info += '\nXX-Mini Version     : %s (python/%s pyopenssl/%s)\n' % (__version__, sys.version.split()[0], openssl_version.__version__)
-    info += 'Listen Address      : %s:%d\n' % (config.LISTEN_IP if config.LISTEN_IP == '127.0.0.1' else ProxyUtil.get_listen_ip(), config.LISTEN_PORT)
+    info += 'Listen Address      : %s:%d\n' % (config.LISTEN_IP if config.LISTEN_IP == '127.0.0.1' else config.get_listen_ip(), config.LISTEN_PORT)
     info += 'Setting File        : %sproxy.ini\n' % (config.MANUAL_LOADED + '/' if config.MANUAL_LOADED else '')
     info += '%s Proxy     : %s:%s\n' % (config.PROXY_TYPE, config.PROXY_HOST, config.PROXY_PORT) if config.PROXY_ENABLE else ''
     info += 'GAE APPID           : %s\n' % appids
@@ -169,7 +169,7 @@ def pre_start():
             pass
     elif os.name == 'nt':
         import ctypes
-        ctypes.windll.kernel32.SetConsoleTitleW(u'GoAgent v%s' % __version__)
+        ctypes.windll.kernel32.SetConsoleTitleW(u'XX-Mini v%s' % __version__)
         if not config.LISTEN_VISIBLE:
             ctypes.windll.user32.ShowWindow(ctypes.windll.kernel32.GetConsoleWindow(), 0)
         else:
@@ -185,8 +185,8 @@ def pre_start():
             tasklist = '\n'.join(x.name for x in get_windows_running_process_list()).lower()
             softwares = [x for x in softwares if x.lower() in tasklist]
             if softwares:
-                title = u'GoAgent 建议'
-                error = u'某些安全软件(如 %s)可能和本软件存在冲突，造成 CPU 占用过高。\n如有此现象建议暂时退出此安全软件来继续运行GoAgent' % ','.join(softwares)
+                title = u'XX-Mini 建议'
+                error = u'某些安全软件(如 %s)可能和本软件存在冲突，造成 CPU 占用过高。\n如有此现象建议暂时退出此安全软件来继续运行XX-Mini' % ','.join(softwares)
                 ctypes.windll.user32.MessageBoxW(None, error, title, 0)
                 #sys.exit(0)
     if config.GAE_APPIDS[0] == 'gae_proxy':
