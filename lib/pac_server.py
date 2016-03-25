@@ -361,7 +361,7 @@ class PACServerHandler(simple_http_server.HttpServerHandler):
         self.wfile.write(b'HTTP/1.1 403\r\nConnection: close\r\n\r\n')
 
     def do_GET(self):
-        xlog.info('PAC from:%s %s %s ', self.address_string(), self.command, self.path)
+        xlog.info('PACServer from:%s %s %s ', self.address_string(), self.command, self.path)
 
         path = urlparse.urlparse(self.path).path # '/proxy.pac'
         filename = os.path.normpath('./' + path).lower() # proxy.pac
@@ -389,9 +389,9 @@ class PACServerHandler(simple_http_server.HttpServerHandler):
                 data = open(cer_filename, 'rb').read()
             else:
                 return
-            self.wfile.write(('HTTP/1.1 200\r\nContent-Disposition: attachment; filename=CA.crt\r\nContent-Type: %s\r\nContent-Length: %s\r\n\r\n' % (mimetype, len(data))).encode())
+            self.wfile.write(('HTTP/1.1 200\r\nContent-Disposition: inline; filename=CA.crt\r\nContent-Type: %s\r\nContent-Length: %s\r\n\r\n' % (mimetype, len(data))).encode())
             self.wfile.write(data)
         else:
-            xlog.warn("pac_server GET %s fail", filename)
-            return self.wfile.write(('HTTP/1.1 301\r\nContent-Length: 0\r\n\r\n').encode())
+            xlog.warn("PACServer GET %s fail", filename)
+            return self.wfile.write(('HTTP/1.1 404\r\nContent-Length: 0\r\n\r\n').encode())
 

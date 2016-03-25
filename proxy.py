@@ -33,7 +33,7 @@
 #      cnfuyu            <cnfuyu@gmail.com>
 #      cuixin            <steven.cuixin@gmail.com>
 
-__version__ = '1.2.1'
+__version__ = '1.2.2'
 
 import sys
 import os
