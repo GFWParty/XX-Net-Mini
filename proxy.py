@@ -47,7 +47,8 @@ work_path = os.path.dirname(os.path.abspath(__file__))
 os.chdir(work_path)
 
 sys.path.append(os.path.abspath( os.path.join(work_path, 'lib')))
-if sys.platform.startswith("linux"): sys.path.append(work_path + '/lib.egg/lib/')
+if sys.platform.startswith("linux") or sys.platform.startswith("darwin"):
+    sys.path.append(work_path + '/lib.egg/lib/')
 
 from config import config
 from OpenSSL import version as openssl_version
