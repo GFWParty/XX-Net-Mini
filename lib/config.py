@@ -116,11 +116,12 @@ class Config(object):
         self.https_max_connect_thread = config.CONFIG.getint("connect_manager", "https_max_connect_thread")
 
         self.log_file = config.CONFIG.getint("system", "log_file")
-
+        self.log_scan = config.CONFIG.getint("system", "log_scan") if config.CONFIG.has_option("system", "log_scan") else False
 
         # change to True when finished import CA cert to browser
         # launcher will wait import ready then open browser to show status, check update etc
         self.cert_import_ready = False
+
 
     @staticmethod
     def get_listen_ip():
@@ -136,6 +137,7 @@ class Config(object):
             if sock:
                 sock.close()
         return listen_ip
+
 
 config = Config()
 config.load()
