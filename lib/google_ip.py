@@ -35,7 +35,7 @@ from scan_ip_log import scan_ip_log
 
 class IpManager():
 
-    def check(self):
+    def __init__(self):
         self.scan_thread_lock = threading.Lock()
         self.ip_lock = threading.Lock()
         self.ip_range = google_ip_range.ip_range

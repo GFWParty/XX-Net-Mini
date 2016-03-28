@@ -33,7 +33,7 @@
 #      cnfuyu            <cnfuyu@gmail.com>
 #      cuixin            <steven.cuixin@gmail.com>
 
-__version__ = '1.2.2'
+__version__ = '1.2.3'
 
 import sys
 import os
@@ -45,25 +45,30 @@ if os.path.islink(__file__):
     __file__ = getattr(os, 'readlink', lambda x: x)(__file__)
 work_path = os.path.dirname(os.path.abspath(__file__))
 os.chdir(work_path)
+data_path = os.path.join(work_path, 'data')
+if not os.path.isdir(data_path): os.mkdir(data_path)
 
+# add python lib path
 sys.path.append(os.path.abspath( os.path.join(work_path, 'lib')))
-if sys.platform.startswith("linux") or sys.platform.startswith("darwin"):
+if sys.platform.startswith("linux"):
     sys.path.append(work_path + '/lib.egg/lib/')
+    # reduce resource request for threading, for OpenWrt
+    import threading
+    threading.stack_size(128*1024)
+elif sys.platform.startswith("darwin"):
+    sys.path.append(work_path + '/lib.egg/lib/')
+
 
 from config import config
 from OpenSSL import version as openssl_version
-from pac_server import PACServerHandler
-
 from xlog import getLogger
 xlog = getLogger("gae_proxy")
 xlog.set_buffer(500)
 
-data_path = os.path.join(work_path, 'data')
-if not os.path.isdir(data_path): os.mkdir(data_path)
-
 if config.log_file:
     log_file = os.path.join(data_path, "local.log")
     xlog.set_file(log_file)
+
 
 def summary():
     appids = '|'.join(config.GAE_APPIDS)
@@ -92,7 +97,6 @@ if config.LISTEN_DEBUGINFO:
     xlog.set_debug()
 
 import time
-import traceback
 import random
 import threading
 import urllib2
@@ -101,14 +105,9 @@ import proxy_handler
 import connect_control
 import connect_manager
 from cert_util import CertUtil
-from google_ip_range import ip_range
-from google_ip import google_ip
-from check_local_network import _simple_check_worker as simple_check_worker
 from gae_handler import spawn_later
+from pac_server import PACServerHandler
 
-
-# launcher/module_init will check this value for start/stop finished
-ready = False
 
 def pre_start():
 
@@ -200,19 +199,7 @@ def pre_start():
 
 
 def main():
-    global ready
-    for i in range(50):
-        check_network = simple_check_worker()
-        if check_network:
-            break
-        else:
-            time.sleep(3)
-        if (i+1)%5 == 0: xlog.error('Failed to connect to network, please check!')
-        if i+1 == 50: return
     pre_start()
-
-    ip_range.load()
-    google_ip.check()
 
     connect_control.keep_running = True
     connect_manager.https_manager.load_config()
@@ -234,12 +221,9 @@ def main():
         pac_thread.start()
         urllib2.urlopen('http://127.0.0.1:%d/%s' % (config.PAC_PORT, config.PAC_FILE))
 
-    ready = True  # checked by launcher.module_init
-
     while connect_control.keep_running:
         time.sleep(1)
 
-    xlog.info("Exiting gae_proxy module...")
     proxy_daemon.shutdown()
     proxy_daemon.server_close()
     proxy_thread.join()
@@ -247,22 +231,17 @@ def main():
         pac_daemon.shutdown()
         pac_daemon.server_close()
         pac_thread.join()
-    ready = False  # checked by launcher.module_init
-    xlog.debug("## GAEProxy set keep_running: %s", connect_control.keep_running)
 
 
-# called by launcher/module/stop
 def terminate():
     xlog.info("start to terminate GAE_Proxy")
     connect_control.keep_running = False
     xlog.debug("## Set keep_running: %s", connect_control.keep_running)
+    sys.exit()
 
 
 if __name__ == '__main__':
     try:
         main()
-    except Exception:
-        traceback.print_exc(file=sys.stdout)
     except KeyboardInterrupt:
         terminate()
-        sys.exit()

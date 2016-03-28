@@ -14,9 +14,9 @@ xlog = getLogger("gae_proxy")
 random.seed(time.time()* 1000000)
 
 
-
 class IpRange(object):
-    def load(self):
+
+    def __init__(self):
         self.default_range_file = os.path.join(current_path, "ip_range.txt")
         self.user_range_file = os.path.join(config.DATA_PATH, "ip_range.txt")
         self.load_ip_range()
