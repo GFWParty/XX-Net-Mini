@@ -292,11 +292,11 @@ class CertUtil(object):
             crypt32.CertCloseStore(store_handle, 0)
             del crypt32
             if not ret and __name__ != "__main__":
-                #res = CertUtil.win32_notify(msg=u'Import GoAgent Ca?', title=u'Authority need')
-                #if res == 2:
-                #    return -1
                 import win32elevate
-                win32elevate.elevateAdminRun(os.path.abspath(__file__))
+                try:
+                    win32elevate.elevateAdminRun(os.path.abspath(__file__))
+                except Exception as e:
+                    xlog.warning('CertUtil.import_windows_ca failed: %r', e)
                 return True
             else:
                 CertUtil.win32_notify(msg=u'已经导入GoAgent证书，请重启浏览器.', title=u'Restart browser need.')
