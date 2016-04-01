@@ -12,23 +12,23 @@ import io
 import string
 import socket
 import ssl
-import httplib
-import Queue
-import urlparse
+import http.client
+import queue
+import urllib.parse
 import threading
 
 
 from xlog import getLogger
 xlog = getLogger("gae_proxy")
-from connect_manager import https_manager
-from appids_manager import appid_manager
+from .connect_manager import https_manager
+from .appids_manager import appid_manager
 
 
 import OpenSSL
 NetWorkIOError = (socket.error, ssl.SSLError, OpenSSL.SSL.Error, OSError)
 
-from config import config
-from google_ip import google_ip
+from .config import config
+from .google_ip import google_ip
 
 def generate_message_html(title, banner, detail=''):
     MESSAGE_TEMPLATE = '''
@@ -69,7 +69,10 @@ def spawn_later(seconds, target, *args, **kwargs):
         except:
             result = None
         return result
-    return __import__('thread').start_new_thread(wrap, args, kwargs)
+
+    import threading
+    th = threading.Thread(target=wrap, args=args, kwargs=kwargs)
+    return th.start()
 
 
 skip_headers = frozenset(['Vary',
@@ -89,14 +92,14 @@ def send_header(wfile, keyword, value):
     if keyword == 'Set-Cookie':
         # https://cloud.google.com/appengine/docs/python/urlfetch/responseobjects
         for cookie in re.split(r', (?=[^ =]+(?:=|$))', value):
-            wfile.write("%s: %s\r\n" % (keyword, cookie))
+            wfile.write(("%s: %s\r\n" % (keyword, cookie)).encode())
             #logging.debug("Head1 %s: %s", keyword, cookie)
     elif keyword == 'Content-Disposition' and '"' not in value:
         value = re.sub(r'filename=([^"\']+)', 'filename="\\1"', value)
-        wfile.write("%s: %s\r\n" % (keyword, value))
+        wfile.write(("%s: %s\r\n" % (keyword, value)).encode())
         #logging.debug("Head1 %s: %s", keyword, value)
     else:
-        wfile.write("%s: %s\r\n" % (keyword, value))
+        wfile.write(("%s: %s\r\n" % (keyword, value)).encode())
         #logging.debug("Head1 %s: %s", keyword, value)
 
 def _request(sock, headers, payload, bufsize=8192):
@@ -105,6 +108,7 @@ def _request(sock, headers, payload, bufsize=8192):
     request_data += '\r\n'
 
     if isinstance(payload, bytes):
+        payload = payload
         sock.send(request_data.encode())
         payload_len = len(payload)
         start = 0
@@ -122,18 +126,18 @@ def _request(sock, headers, payload, bufsize=8192):
     else:
         raise TypeError('_request(payload) must be a string or buffer, not %r' % type(payload))
 
-    response = httplib.HTTPResponse(sock, buffering=True)
+    response = http.client.HTTPResponse(sock)
     try:
         orig_timeout = sock.gettimeout()
         sock.settimeout(100)
         response.begin()
         sock.settimeout(orig_timeout)
-    except httplib.BadStatusLine as e:
+    except http.client.BadStatusLine as e:
         #logging.warn("_request bad status line:%r", e)
         response.close()
         response = None
     except Exception as e:
-        xlog.warn("_request:%r", e)
+        xlog.exception("_request:%r", e)
     return response
 
 class GAE_Exception(BaseException):
@@ -188,7 +192,10 @@ def deflate(data):
     return zlib.compress(data)[2:-4]
 
 def fetch(method, url, headers, body):
-    if isinstance(body, basestring) and body:
+    if isinstance(body, str):
+        body = body.encode()
+
+    if body:
         if len(body) < 10 * 1024 * 1024 and 'Content-Encoding' not in headers:
             zbody = deflate(body)
             if len(zbody) < len(body):
@@ -211,19 +218,19 @@ def fetch(method, url, headers, body):
     kwargs['maxsize'] = config.AUTORANGE_MAXSIZE
     kwargs['timeout'] = '19'
 
-    payload = '%s %s HTTP/1.1\r\n' % (method, url)
-    payload += ''.join('%s: %s\r\n' % (k, v) for k, v in headers.items() if k not in skip_headers)
+    req_head = '%s %s HTTP/1.1\r\n' % (method, url)
+    req_head += ''.join('%s: %s\r\n' % (k, v) for k, v in headers.items() if k not in skip_headers)
     #for k, v in headers.items():
     #    logging.debug("Send %s: %s", k, v)
-    payload += ''.join('X-URLFETCH-%s: %s\r\n' % (k, v) for k, v in kwargs.items() if v)
+    req_head += ''.join('X-URLFETCH-%s: %s\r\n' % (k, v) for k, v in kwargs.items() if v)
 
+    pack_req_head = deflate(req_head.encode())
+
+    request_body = struct.pack('!h', len(pack_req_head)) + pack_req_head + body
     request_headers = {}
-    payload = deflate(payload)
+    request_headers['Content-Length'] = str(len(request_body))
 
-    body = '%s%s%s' % (struct.pack('!h', len(payload)), payload, body)
-    request_headers['Content-Length'] = str(len(body))
-
-    response = request(request_headers, body)
+    response = request(request_headers, request_body)
 
     response.app_msg = ''
     response.app_status = response.status
@@ -238,8 +245,15 @@ def fetch(method, url, headers, body):
         response.read = response.fp.read
         return response
     headers_length, = struct.unpack('!h', data)
-    data = response.read(headers_length)
-    if len(data) < headers_length:
+    data = bytearray(headers_length)
+    dv = memoryview(data)
+    start = 0
+    while start < headers_length:
+        read_len = response.readinto(dv[start:])
+        if read_len == 0:
+            break
+        start += read_len
+    if start < headers_length:
         xlog.warn("fetch too short header need:%d get:%d %s", headers_length, len(data), url)
         response.app_status = 509
         response.fp = io.BytesIO(b'connection aborted. too short headers data=' + data)
@@ -248,12 +262,12 @@ def fetch(method, url, headers, body):
 
     response.ssl_sock.received_size += headers_length
 
-    raw_response_line, headers_data = inflate(data).split('\r\n', 1)
+    raw_response_line, headers_data = inflate(data).split(b'\r\n', 1)
     _, response.status, response.reason = raw_response_line.split(None, 2)
     response.status = int(response.status)
     response.reason = response.reason.strip()
-    response.msg = httplib.HTTPMessage(io.BytesIO(headers_data))
-    response.app_msg = response.msg.fp.read()
+    response.headers = http.client.parse_headers(io.BytesIO(headers_data))
+    response.app_msg = response.headers.get_payload()
     return response
 
 
@@ -266,19 +280,23 @@ def send_response(wfile, status=404, headers={}, body=''):
     if 'Transfer-Encoding' in headers:
         del headers['Transfer-Encoding']
     if 'Content-Length' not in headers:
+        if isinstance(body,str):
+            body = body.encode()
         headers['Content-Length'] = len(body)
     if 'Connection' not in headers:
         headers['Connection'] = 'close'
 
-    wfile.write("HTTP/1.1 %d\r\n" % status)
+    wfile.write(("HTTP/1.1 %d\r\n" % status).encode())
     for key, value in headers.items():
         #wfile.write("%s: %s\r\n" % (key, value))
         send_header(wfile, key, value)
-    wfile.write("\r\n")
+    wfile.write(b"\r\n")
+    if isinstance(body,str):
+        body = body.encode()
     wfile.write(body)
 
 def return_fail_message(wfile):
-    html = generate_message_html('504 GAEProxy Proxy Time out', u'连接超时，先休息一会再来！')
+    html = generate_message_html('504 GAEProxy Proxy Time out', '连接超时，先休息一会再来！')
     send_response(wfile, 504, body=html.encode('utf-8'))
     return
 
@@ -331,7 +349,7 @@ def handler(method, url, headers, body, wfile):
                 appid = appid_manager.get_appid()
 
                 if not appid:
-                    html = generate_message_html('404 No usable Appid Exists', u'没有可用appid了，请配置可用的appid')
+                    html = generate_message_html('404 No usable Appid Exists', '没有可用appid了，请配置可用的appid')
                     send_response(wfile, 404, body=html.encode('utf-8'))
                     response.close()
                     return
@@ -356,7 +374,7 @@ def handler(method, url, headers, body, wfile):
                 appid = appid_manager.get_appid()
 
                 if not appid:
-                    html = generate_message_html('503 No usable Appid Exists', u'appid流量不足，请增加appid')
+                    html = generate_message_html('503 No usable Appid Exists', 'appid流量不足，请增加appid')
                     send_response(wfile, 503, body=html.encode('utf-8'))
                     response.close()
                     return
@@ -396,18 +414,18 @@ def handler(method, url, headers, body, wfile):
 
         send_to_browser = True
         try:
-            wfile.write("HTTP/1.1 %d %s\r\n" % (response.status, response.reason))
+            wfile.write(("HTTP/1.1 %d %s\r\n" % (response.status, response.reason.decode())).encode())
             for key in response_headers:
                 value = response_headers[key]
                 send_header(wfile, key, value)
                 #logging.debug("Head- %s: %s", key, value)
-            wfile.write("\r\n")
+            wfile.write(b"\r\n")
         except Exception as e:
             send_to_browser = False
             xlog.warn("gae_handler.handler send response fail. t:%d e:%r %s", time.time()-time_request, e, url)
 
 
-        if len(response.app_msg):
+        if response.app_msg:
             xlog.warn("APPID error:%d url:%s", response.status, url)
             wfile.write(response.app_msg)
             google_ip.report_connect_closed(response.ssl_sock.ip, "app err")
@@ -464,20 +482,20 @@ def handler(method, url, headers, body, wfile):
                         xlog.debug("send to browser wfile.write ret:%d", ret)
                         ret = wfile.write(data)
                 except Exception as e_b:
-                    if e_b[0] in (errno.ECONNABORTED, errno.EPIPE, errno.ECONNRESET) or 'bad write retry' in repr(e_b):
-                        xlog.warn('gae_handler send to browser return %r %r', e_b, url)
-                    else:
-                        xlog.warn('gae_handler send to browser return %r %r', e_b, url)
+                    #if e_b[0] in (errno.ECONNABORTED, errno.EPIPE, errno.ECONNRESET) or 'bad write retry' in repr(e_b):
+                    #    xlog.warn('gae_handler send to browser return %r %r', e_b, url)
+                    #else:
+                    xlog.warn('gae_handler send to browser return %r %r', e_b, url)
                     send_to_browser = False
 
     except NetWorkIOError as e:
         time_except = time.time()
         time_cost = time_except - time_request
-        if e[0] in (errno.ECONNABORTED, errno.EPIPE) or 'bad write retry' in repr(e):
-            xlog.warn("gae_handler err:%r time:%d %s ", e, time_cost, url)
-            google_ip.report_connect_closed(response.ssl_sock.ip, "Net")
-        else:
-            xlog.exception("gae_handler except:%r %s", e, url)
+        #if e[0] in (errno.ECONNABORTED, errno.EPIPE) or 'bad write retry' in repr(e):
+        xlog.warn("gae_handler err:%r time:%d %s ", e, time_cost, url)
+        google_ip.report_connect_closed(response.ssl_sock.ip, "Net")
+        #else:
+        #    xlog.exception("gae_handler except:%r %s", e, url)
     except Exception as e:
         xlog.exception("gae_handler except:%r %s", e, url)
 
@@ -514,7 +532,7 @@ class RangeFetch(object):
         xlog.info('>>>>>>>>>>>>>>> RangeFetch started(%r) %d-%d', self.url, start, end)
 
         try:
-            self.wfile.write("HTTP/1.1 200 OK\r\n")
+            self.wfile.write(b"HTTP/1.1 200 OK\r\n")
             for key in response_headers:
                 if key == 'Transfer-Encoding':
                     continue
@@ -525,19 +543,19 @@ class RangeFetch(object):
                 value = response_headers[key]
                 #logging.debug("Head %s: %s", key.title(), value)
                 send_header(self.wfile, key, value)
-            self.wfile.write("\r\n")
+            self.wfile.write(b"\r\n")
         except Exception as e:
             self._stopped = True
             xlog.warn("RangeFetch send response fail:%r %s", e, self.url)
             return
 
-        data_queue = Queue.PriorityQueue()
-        range_queue = Queue.PriorityQueue()
+        data_queue = queue.PriorityQueue()
+        range_queue = queue.PriorityQueue()
         range_queue.put((start, end, self.response))
         self.expect_begin = start
         for begin in range(end+1, length, self.maxsize):
             range_queue.put((begin, min(begin+self.maxsize-1, length-1), None))
-        for i in xrange(0, self.threads):
+        for i in range(0, self.threads):
             range_delay_size = i * self.maxsize
             spawn_later(float(range_delay_size)/self.waitsize, self.__fetchlet, range_queue, data_queue, range_delay_size)
 
@@ -566,7 +584,7 @@ class RangeFetch(object):
                     else:
                         xlog.error('RangeFetch Error: begin(%r) < expect_begin(%r), quit.', begin, self.expect_begin)
                         break
-            except Queue.Empty:
+            except queue.Empty:
                 xlog.error('data_queue peek timeout, break')
                 break
 
@@ -597,7 +615,7 @@ class RangeFetch(object):
                     headers['Range'] = 'bytes=%d-%d' % (start, end)
                     if not response:
                         response = fetch(self.method, self.url, headers, self.body)
-                except Queue.Empty:
+                except queue.Empty:
                     continue
                 except Exception as e:
                     xlog.warning("RangeFetch fetch response %r in __fetchlet", e)
@@ -637,7 +655,7 @@ class RangeFetch(object):
                     continue
 
                 if response.getheader('Location'):
-                    self.url = urlparse.urljoin(self.url, response.getheader('Location'))
+                    self.url = urllib.parse.urljoin(self.url, response.getheader('Location'))
                     xlog.info('RangeFetch Redirect(%r)', self.url)
                     google_ip.report_connect_closed(response.ssl_sock.ip, "reLocation")
                     response.close()
@@ -691,7 +709,7 @@ class RangeFetch(object):
                     response.close()
                     range_queue.put((start, end, None))
                     continue
-            except StandardError as e:
+            except Exception as e:
                 xlog.exception('RangeFetch._fetchlet error:%s', e)
                 raise
 

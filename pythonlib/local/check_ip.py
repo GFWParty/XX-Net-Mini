@@ -2,28 +2,26 @@
 import sys
 import os
 
-import httplib
+import http.client
 import time
 import socket
 import struct
 import binascii
-from proxy_dir import current_path
 
 import OpenSSL
 SSLError = OpenSSL.SSL.WantReadError
 
+from local import cert_util
+from local.openssl_wrap import SSLConnection
+from local.config import config
+from local import check_local_network
 import socks
-import check_local_network
-from config import config
-import cert_util
-from openssl_wrap import SSLConnection
 
 from xlog import getLogger
 xlog = getLogger("gae_proxy")
 
-
-g_cacertfile = os.path.join(current_path, "cacert.pem")
-openssl_context = SSLConnection.context_builder(ca_certs=g_cacertfile)
+g_cacertfile = os.path.join(config.ROOT_PATH, "cacert.pem")
+openssl_context = SSLConnection.context_builder(ca_certs=g_cacertfile.encode())
 openssl_context.set_session_id(binascii.b2a_hex(os.urandom(10)))
 if hasattr(OpenSSL.SSL, 'SESS_CACHE_BOTH'):
     openssl_context.set_session_cache_mode(OpenSSL.SSL.SESS_CACHE_BOTH)
@@ -45,7 +43,7 @@ def load_proxy_config():
             proxy_type = socks.SOCKS5
         else:
             xlog.error("proxy type %s unknown, disable proxy", config.PROXY_TYPE)
-            raise
+            raise Exception()
 
         socks.set_default_proxy(proxy_type, config.PROXY_HOST, config.PROXY_PORT, config.PROXY_USER, config.PROXY_PASSWD)
 load_proxy_config()
@@ -88,11 +86,19 @@ def connect_ssl(ip, port=443, timeout=5, openssl_context=None, check_cert=True):
         raise socket.error(' certficate is none')
 
     if check_cert:
-        issuer_commonname = next((v for k, v in cert.get_issuer().get_components() if k == 'CN'), '')
+
+        for k, v in cert.get_issuer().get_components():
+            if k == b"O":
+                issuer_commonname = v.decode()
+                break
+        else:
+            raise socket.error('certficate has no issuer.' )
+
         if __name__ == "__main__":
             xlog.debug("issued by:%s", issuer_commonname)
         if not issuer_commonname.startswith('Google'):
             raise socket.error(' certficate is issued by %r, not Google' % ( issuer_commonname))
+
 
     connct_time = int((time_connected - time_begin) * 1000)
     handshake_time = int((time_handshaked - time_connected) * 1000)
@@ -114,14 +120,14 @@ def get_ssl_cert_domain(ssl_sock):
     #issuer_commonname = next((v for k, v in cert.get_issuer().get_components() if k == 'CN'), '')
     ssl_cert = cert_util.SSLCert(cert)
     if __name__ == "__main__":
-        xlog.info("%s CN:%s", ip, ssl_cert.cn)
-    ssl_sock.domain = ssl_cert.cn
+        xlog.info("%s CN:%s", ip, ssl_cert.cn.decode())
+    ssl_sock.domain = ssl_cert.cn.decode()
 
 
 def check_goagent(ssl_sock, appid):
     request_data = 'GET /_gh/ HTTP/1.1\r\nHost: %s.appspot.com\r\n\r\n' % appid
     ssl_sock.send(request_data.encode())
-    response = httplib.HTTPResponse(ssl_sock, buffering=True)
+    response = http.client.HTTPResponse(ssl_sock)
 
     response.begin()
     if response.status == 404:
@@ -147,7 +153,7 @@ def check_goagent(ssl_sock, appid):
         return False
 
     content = response.read()
-    if "GoAgent" not in content:
+    if b"GoAgent" not in content:
         if __name__ == "__main__":
             xlog.warn("app check %s content:%s", appid, content)
         return False
@@ -177,13 +183,3 @@ def test_gae_ip(ip, appid=None):
         if __name__ == "__main__":
             xlog.exception("test_gae_ip %s e:%r",ip, e)
         return False
-
-
-if __name__ == "__main__":
-    if len(sys.argv) > 1:
-        ip = sys.argv[1]
-        xlog.info("test ip:%s", ip)
-        res = test_gae_ip(ip)
-        print res
-    else:
-        xlog.info("check_ip <ip>")

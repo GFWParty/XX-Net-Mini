@@ -7,17 +7,17 @@ import time
 import re
 import socket
 import ssl
-import httplib
+import http.client
 
 import OpenSSL
 NetWorkIOError = (socket.error, ssl.SSLError, OpenSSL.SSL.Error, OSError)
 
 
-from connect_manager import https_manager
+from .connect_manager import https_manager
 
-from gae_handler import return_fail_message
-from google_ip import google_ip
-from config import config
+from .gae_handler import return_fail_message
+from .google_ip import google_ip
+from .config import config
 
 from xlog import getLogger
 xlog = getLogger("gae_proxy")
@@ -30,18 +30,17 @@ def send_header(wfile, keyword, value):
     keyword = keyword.title()
     if keyword == 'Set-Cookie':
         for cookie in re.split(r', (?=[^ =]+(?:=|$))', value):
-            wfile.write("%s: %s\r\n" % (keyword, cookie))
+            wfile.write(("%s: %s\r\n" % (keyword, cookie)).encode())
             #logging.debug("Head1 %s: %s", keyword, cookie)
     elif keyword == 'Content-Disposition' and '"' not in value:
         value = re.sub(r'filename=([^"\']+)', 'filename="\\1"', value)
-        wfile.write("%s: %s\r\n" % (keyword, value))
+        wfile.write(("%s: %s\r\n" % (keyword, value)).encode())
         #logging.debug("Head1 %s: %s", keyword, value)
     elif keyword == "Alternate-Protocol":
         return
     else:
         #logging.debug("Head1 %s: %s", keyword, value)
-        wfile.write("%s: %s\r\n" % (keyword, value))
-
+        wfile.write(("%s: %s\r\n" % (keyword, value)).encode())
 
 
 def fetch(method, host, path, headers, payload, bufsize=8192):
@@ -62,7 +61,7 @@ def fetch(method, host, path, headers, payload, bufsize=8192):
             sended = ssl_sock.send(payload[start:start+send_size])
             start += sended
 
-        response = httplib.HTTPResponse(ssl_sock, buffering=True)
+        response = http.client.HTTPResponse(ssl_sock)
 
         response.ssl_sock = ssl_sock
 
@@ -70,7 +69,7 @@ def fetch(method, host, path, headers, payload, bufsize=8192):
         ssl_sock.settimeout(90)
         response.begin()
         ssl_sock.settimeout(orig_timeout)
-    except httplib.BadStatusLine as e:
+    except http.client.BadStatusLine as e:
         xlog.warn("direct_handler.fetch bad status line:%r", e)
         google_ip.report_connect_closed(ssl_sock.ip, "request_fail")
         response = None
@@ -116,10 +115,10 @@ def handler(method, host, url, headers, body, wfile):
         send_to_browser = True
         try:
             response_headers = dict((k.title(), v) for k, v in response.getheaders())
-            wfile.write("HTTP/1.1 %d %s\r\n" % (response.status, response.reason))
+            wfile.write(("HTTP/1.1 %d %s\r\n" % (response.status, response.reason)).encode())
             for key, value in response.getheaders():
                 send_header(wfile, key, value)
-            wfile.write("\r\n")
+            wfile.write(b"\r\n")
         except Exception as e:
             send_to_browser = False
             wait_time = time.time()-time_request
@@ -137,7 +136,7 @@ def handler(method, host, url, headers, body, wfile):
             while True:
                 try:
                     data = response.read(8192)
-                except httplib.IncompleteRead, e:
+                except http.client.IncompleteRead as e:
                     data = e.partial
                 except Exception as e:
                     google_ip.report_connect_closed(response.ssl_sock.ip, "receive fail")
@@ -148,12 +147,12 @@ def handler(method, host, url, headers, body, wfile):
                 if send_to_browser:
                     try:
                         if not data:
-                            wfile.write('0\r\n\r\n')
+                            wfile.write(b'0\r\n\r\n')
                             break
                         length += len(data)
-                        wfile.write('%x\r\n' % len(data))
+                        wfile.write(('%x\r\n' % len(data)).encode())
                         wfile.write(data)
-                        wfile.write('\r\n')
+                        wfile.write(b'\r\n')
                     except Exception as e:
                         send_to_browser = False
                         xlog.warn("direct_handler.handler send Transfer-Encoding t:%d e:%r %s/%s", time.time()-time_request, e, host, url)

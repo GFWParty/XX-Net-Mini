@@ -2,15 +2,14 @@
 # coding:utf-8
 
 
-import ConfigParser
+import configparser
 import os
 import re
 import io
-
+import codecs
 
 from xlog import getLogger
 xlog = getLogger("gae_proxy")
-from proxy_dir import current_path
 
 
 
@@ -18,39 +17,33 @@ class Config(object):
 
     def load(self):
         """load config from proxy.ini"""
-        ConfigParser.RawConfigParser.OPTCRE = re.compile(r'(?P<option>[^=\s][^=]*)\s*(?P<vi>[=])\s*(?P<value>.*)$')
-        self.CONFIG = ConfigParser.ConfigParser()
-        self.CONFIG_FILENAME = os.path.abspath( os.path.join(current_path, 'proxy.ini'))
-
-        self.DATA_PATH = os.path.abspath( os.path.join(current_path, 'data'))
-        if not os.path.isdir(self.DATA_PATH):
-            self.DATA_PATH = current_path
-
-        # load ../../../data/config.ini, set by web_ui
-        self.CONFIG_USER_FILENAME = os.path.abspath( os.path.join(self.DATA_PATH, 'config.ini'))
+        current_path = os.path.dirname(os.path.abspath(__file__))
+        configparser.RawConfigParser.OPTCRE = re.compile(r'(?P<option>[^=\s][^=]*)\s*(?P<vi>[=])\s*(?P<value>.*)$')
+        self.CONFIG = configparser.ConfigParser()
+        self.ROOT_PATH = os.path.abspath(os.path.join(current_path, os.pardir, os.pardir))
+        self.DATA_PATH = os.path.abspath(os.path.join(self.ROOT_PATH, 'data'))
+        self.CONFIG_FILENAME = os.path.abspath(os.path.join(self.ROOT_PATH, 'proxy.ini'))
         self.CONFIG.read(self.CONFIG_FILENAME)
-        if os.path.isfile(self.CONFIG_USER_FILENAME):
-            with open(self.CONFIG_USER_FILENAME, 'rb') as fp:
-                content = fp.read()
-                self.CONFIG.readfp(io.BytesIO(content))
 
         # load ../../../data/manual.ini, set by manual
         self.CONFIG_MANUAL_FILENAME = os.path.abspath( os.path.join(self.DATA_PATH, 'manual.ini'))
         if os.path.isfile(self.CONFIG_MANUAL_FILENAME):
-            with open(self.CONFIG_MANUAL_FILENAME, 'rb') as fp:
-                content = fp.read()
-                try:
-                    self.CONFIG.readfp(io.BytesIO(content))
-                    xlog.info("load manual.ini success")
-                except Exception as e:
-                    xlog.exception("data/manual.ini load error:%s", e)
+            try:
+                self.CONFIG.read(self.CONFIG_MANUAL_FILENAME)
+                xlog.info("load manual.ini success")
+            except Exception as e:
+                xlog.exception("data/manual.ini load error:%s", e)
 
         self.LISTEN_IP = self.CONFIG.get('listen', 'ip')
         self.LISTEN_PORT = self.CONFIG.getint('listen', 'port')
         self.LISTEN_VISIBLE = self.CONFIG.getint('listen', 'visible')
         self.LISTEN_DEBUGINFO = self.CONFIG.getint('listen', 'debuginfo')
 
-        self.GAE_APPIDS = [x.strip() for x in self.CONFIG.get('gae', 'appid').split("|")]
+        self.PUBLIC_APPIDS = [x.strip() for x in self.CONFIG.get('gae', 'public_appid').split("|")]
+        if self.CONFIG.get('gae', 'appid'):
+            self.GAE_APPIDS = [x.strip() for x in self.CONFIG.get('gae', 'appid').split("|")]
+        else:
+            self.GAE_APPIDS = []
         self.GAE_PASSWORD = self.CONFIG.get('gae', 'password').strip()
 
         fwd_endswith = []

@@ -1,4 +1,4 @@
-#!/usr/bin/env python2
+#!/usr/bin/env python3
 # coding:utf-8
 # Based on GAppProxy 2.0.0 by Du XiaoGang <dugang.2008@gmail.com>
 # Based on WallProxy 0.4.0 by Hust Moon <www.ehust@gmail.com>
@@ -43,17 +43,26 @@ sys.dont_write_bytecode = True
 
 current_path = os.path.dirname(os.path.abspath(__file__))
 data_path = os.path.join(current_path, 'data')
-if not os.path.isdir(data_path): os.mkdir(data_path)
 
-linux_lib = os.path.abspath( os.path.join(current_path, 'lib'))
-sys.path.append(linux_lib)
+# add python lib path
+sys.path.append(os.path.join(current_path, 'pythonlib'))
+sys.path.append(os.path.join(current_path, 'pythonlib', 'lib'))
+if sys.platform.startswith("linux"):
+    sys.path.append(os.path.join(current_path, 'pythonlib.egg'))
+    sys.path.append(os.path.join(current_path, 'pythonlib.egg', 'lib'))
+    # reduce resource request for threading, for OpenWrt
+    import threading
+    threading.stack_size(128*1024)
+elif sys.platform == "darwin":
+    sys.path.append(os.path.join(current_path, 'pythonlib.egg'))
+    sys.path.append(os.path.join(current_path, 'pythonlib.egg', 'lib'))
 
 import time
 import traceback
 import platform
 import random
 import threading
-import urllib2
+import urllib.request, urllib.error, urllib.parse
 
 __file__ = os.path.abspath(__file__)
 if os.path.islink(__file__):
@@ -62,24 +71,28 @@ work_path = os.path.dirname(os.path.abspath(__file__))
 os.chdir(work_path)
 
 
-from config import config
+def create_data_path():
+    if not os.path.isdir(data_path):
+        os.mkdir(data_path)
+create_data_path()
+
+
+from local.config import config
 
 from xlog import getLogger
 xlog = getLogger("gae_proxy")
 xlog.set_buffer(500)
 if config.log_file:
-    log_file = os.path.join(data_path, "local.log")
+    log_file = os.path.join(data_gae_proxy_path, "local.log")
     xlog.set_file(log_file)
 
-from cert_util import CertUtil
-import pac_server
+from local.cert_util import CertUtil
+from local import pac_server
 import simple_http_server
-import proxy_handler
-import connect_control
-import env_info
-import connect_manager
-from gae_handler import spawn_later
-
+from local import proxy_handler
+from local import connect_control
+from local import connect_manager
+from local.gae_handler import spawn_later
 
 # launcher/module_init will check this value for start/stop finished
 ready = False
@@ -144,7 +157,7 @@ def pre_start():
             pass
     elif os.name == 'nt':
         import ctypes
-        ctypes.windll.kernel32.SetConsoleTitleW(u'GoAgent ')
+        ctypes.windll.kernel32.SetConsoleTitleW('GoAgent ')
         if not config.LISTEN_VISIBLE:
             ctypes.windll.user32.ShowWindow(ctypes.windll.kernel32.GetConsoleWindow(), 0)
         else:
@@ -160,23 +173,19 @@ def pre_start():
             tasklist = '\n'.join(x.name for x in get_windows_running_process_list()).lower()
             softwares = [x for x in softwares if x.lower() in tasklist]
             if softwares:
-                title = u'GoAgent 建议'
-                error = u'某些安全软件(如 %s)可能和本软件存在冲突，造成 CPU 占用过高。\n如有此现象建议暂时退出此安全软件来继续运行GoAgent' % ','.join(softwares)
+                title = 'GoAgent 建议'
+                error = '某些安全软件(如 %s)可能和本软件存在冲突，造成 CPU 占用过高。\n如有此现象建议暂时退出此安全软件来继续运行GoAgent' % ','.join(softwares)
                 ctypes.windll.user32.MessageBoxW(None, error, title, 0)
                 #sys.exit(0)
-    if config.GAE_APPIDS[0] == 'gae_proxy':
-        xlog.critical('please edit %s to add your appid to [gae] !', config.CONFIG_FILENAME)
-        sys.exit(-1)
     if config.PAC_ENABLE:
         pac_ip = config.PAC_IP
         url = 'http://%s:%d/%s' % (pac_ip, config.PAC_PORT, config.PAC_FILE)
-        spawn_later(600, urllib2.build_opener(urllib2.ProxyHandler({})).open, url)
+        spawn_later(600, urllib.request.build_opener(urllib.request.ProxyHandler({})).open, url)
 
 
 def log_info():
     xlog.info('------------------------------------------------------')
     xlog.info('Python Version     : %s', platform.python_version())
-    xlog.info('OS                 : %s', env_info.os_detail())
     xlog.info('Listen Address     : %s:%d', config.LISTEN_IP, config.LISTEN_PORT)
     if config.CONTROL_ENABLE:
         xlog.info('Control Address    : %s:%d', config.CONTROL_IP, config.CONTROL_PORT)

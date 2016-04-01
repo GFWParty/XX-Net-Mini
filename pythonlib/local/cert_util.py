@@ -11,23 +11,18 @@ import base64
 import hashlib
 import threading
 import subprocess
-from proxy_dir import current_path
-
-data_path = os.path.abspath(os.path.join(current_path, 'data'))
-if not os.path.isdir(data_path):
-    data_path = current_path
+import OpenSSL
 
 from xlog import getLogger
 xlog = getLogger("gae_proxy")
-
-import OpenSSL
 
 import ssl, datetime
 from pyasn1.type import univ, constraint, char, namedtype, tag
 from pyasn1.codec.der.decoder import decode
 from pyasn1.error import PyAsn1Error
 
-from config import config
+from local.config import config
+data_path = config.DATA_PATH
 
 
 def get_cmd_out(cmd):
@@ -115,7 +110,7 @@ class SSLCert:
     def cn(self):
         c = None
         for i in self.subject:
-            if i[0] == "CN":
+            if i[0] == b"CN":
                 c = i[1]
         return c
 
@@ -136,7 +131,7 @@ class SSLCert:
 class CertUtil(object):
     """CertUtil module, based on mitmproxy"""
 
-    ca_vendor = 'GoAgent' #TODO: here should be XX-Net
+    ca_vendor = 'GoAgent' #TODO: here should be XX-Mini
     ca_keyfile = os.path.join(data_path, 'CA.crt')
     ca_thumbprint = ''
     ca_certdir = os.path.join(data_path, 'certs')
@@ -154,7 +149,7 @@ class CertUtil(object):
         subj.localityName = 'Cernet'
         subj.organizationName = CertUtil.ca_vendor
         subj.organizationalUnitName = '%s Root' % CertUtil.ca_vendor
-        subj.commonName = '%s XX-Net' % CertUtil.ca_vendor #TODO: here should be GoAgent
+        subj.commonName = '%s XX-Mini' % CertUtil.ca_vendor #TODO: here should be GoAgent
         req.set_pubkey(key)
         req.sign(key, CertUtil.ca_digest)
         ca = OpenSSL.crypto.X509()
@@ -167,7 +162,7 @@ class CertUtil(object):
         ca.set_pubkey(req.get_pubkey())
         ca.add_extensions([
             OpenSSL.crypto.X509Extension(
-                'basicConstraints', False, 'CA:TRUE', subject=ca, issuer=ca)
+                b'basicConstraints', False, b'CA:TRUE', subject=ca, issuer=ca)
             ])
         ca.sign(key, CertUtil.ca_digest)
         #logging.debug("CA key:%s", key)
@@ -287,7 +282,7 @@ class CertUtil(object):
             class CRYPT_HASH_BLOB(ctypes.Structure):
                 _fields_ = [('cbData', ctypes.c_ulong), ('pbData', ctypes.c_char_p)]
             assert CertUtil.ca_thumbprint
-            crypt_hash = CRYPT_HASH_BLOB(20, binascii.a2b_hex(CertUtil.ca_thumbprint.replace(':', '')))
+            crypt_hash = CRYPT_HASH_BLOB(20, binascii.a2b_hex(CertUtil.ca_thumbprint.replace(b':', b'')))
             crypt_handle = crypt32.CertFindCertificateInStore(store_handle, X509_ASN_ENCODING, 0, CERT_FIND_HASH, ctypes.byref(crypt_hash), None)
             if crypt_handle:
                 crypt32.CertFreeCertificateContext(crypt_handle)
@@ -297,17 +292,15 @@ class CertUtil(object):
             crypt32.CertCloseStore(store_handle, 0)
             del crypt32
 
-
             if not ret and __name__ != "__main__":
-                #res = CertUtil.win32_notify(msg=u'Import GoAgent Ca?', title=u'Authority need')
-                #if res == 2:
-                #    return -1
-
                 import win32elevate
-                win32elevate.elevateAdminRun(os.path.abspath(__file__))
+                try:
+                    win32elevate.elevateAdminRun(os.path.abspath(__file__))
+                except Exception as e:
+                    xlog.warning('CertUtil.import_windows_ca failed: %r', e)
                 return True
             else:
-                CertUtil.win32_notify(msg=u'已经导入GoAgent证书，请重启浏览器.', title=u'Restart browser need.')
+                CertUtil.win32_notify(msg='已经导入GoAgent证书，请重启浏览器.', title='Restart browser need.')
 
             return True if ret else False
 
@@ -373,7 +366,7 @@ class CertUtil(object):
     def import_debian_ca(common_name, ca_file):
 
         def get_debian_ca_sha1(nss_path):
-            commonname = "GoAgent XX-Net - GoAgent" #TODO: here should be GoAgent - XX-Net
+            commonname = "GoAgent XX-Mini - GoAgent" #TODO: here should be GoAgent - XX-Mini
 
             cmd = ['certutil', '-L','-d', 'sql:%s' % nss_path, '-n', commonname]
             lines = get_cmd_out(cmd)
@@ -381,14 +374,14 @@ class CertUtil(object):
             get_sha1_title = False
             sha1 = ""
             for line in lines:
-                if line.endswith("Fingerprint (SHA1):\n"):
+                if line.endswith(b'Fingerprint (SHA1):\n'):
                     get_sha1_title = True
                     continue
                 if get_sha1_title:
                     sha1 = line
                     break
 
-            sha1 = sha1.replace(' ', '').replace(':', '').replace('\n', '')
+            sha1 = sha1.replace(b' ', b'').replace(b':', b'').replace(b'\n', b'')
             if len(sha1) != 40:
                 return False
             else:
@@ -404,7 +397,7 @@ class CertUtil(object):
             return False
 
         sha1 = get_debian_ca_sha1(nss_path)
-        ca_hash = CertUtil.ca_thumbprint.replace(':', '')
+        ca_hash = CertUtil.ca_thumbprint.replace(b':', b'')
         if sha1 == ca_hash:
             xlog.info("system cert exist")
             return
@@ -461,14 +454,14 @@ class CertUtil(object):
 
     @staticmethod
     def import_mac_ca(common_name, certfile):
-        commonname = "GoAgent XX-Net" #TODO: need check again
+        commonname = "GoAgent XX-Mini" #TODO: need check again
         ca_hash = CertUtil.ca_thumbprint.replace(':', '')
 
         def get_exist_ca_sha1():
             args = ['security', 'find-certificate', '-Z', '-a', '-c', commonname]
             output = subprocess.check_output(args)
             for line in output.splitlines(True):
-                if len(line) == 53 and line.startswith("SHA-1 hash:"):
+                if len(line) == 53 and line.startswith(b"SHA-1 hash:"):
                     sha1_hash = line[12:52]
                     return sha1_hash
 
@@ -491,7 +484,7 @@ class CertUtil(object):
 
     @staticmethod
     def import_ca(certfile):
-        commonname = "GoAgent XX-Net - GoAgent" #TODO: here should be GoAgent - XX-Net
+        commonname = "GoAgent XX-Mini - GoAgent" #TODO: here should be GoAgent - XX-Mini
         if sys.platform.startswith('win'):
             CertUtil.import_windows_ca(commonname, certfile)
         elif sys.platform == 'darwin':
@@ -549,5 +542,5 @@ if __name__ == '__main__':
 
 
 #TODO:
-# CA commaon should be GoAgent, vander should be XX-Net
+# CA commaon should be GoAgent, vander should be XX-Mini
 # need change and test on all support platform: Windows/Mac/Ubuntu/Debian

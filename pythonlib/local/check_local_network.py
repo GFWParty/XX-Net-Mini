@@ -2,17 +2,15 @@
 import sys
 import os
 
-import httplib
+import http.client
 import time
 import socket
 import threading
-from proxy_dir import current_path
-
 import OpenSSL
 SSLError = OpenSSL.SSL.WantReadError
 
 import socks
-from config import config
+from .config import config
 
 from xlog import getLogger
 xlog = getLogger("gae_proxy")
@@ -67,7 +65,7 @@ def _check_worker():
     _checking_num += 1
     _checking_lock.release()
     try:
-        conn = httplib.HTTPSConnection("github.com", 443, timeout=30)
+        conn = http.client.HTTPSConnection("github.com", 443, timeout=30)
         header = {"user-agent": "Mozilla/5.0 (Windows NT 6.1; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Safari/537.36",
                   "accept":"application/json, text/javascript, */*; q=0.01",
                   "accept-encoding":"gzip, deflate, sdch",
@@ -82,7 +80,7 @@ def _check_worker():
             xlog.debug("network is ok, cost:%d ms", 1000*(time.time() - time_now))
             return True
     except Exception as e:
-        xlog.warn("network fail:%r", e)
+        xlog.warn("check network fail:%r", e)
         network_stat = "Fail"
         last_check_time = time.time()
         return False
@@ -107,11 +105,11 @@ def _simple_check_worker():
     _checking_num += 1
     _checking_lock.release()
     try:
-        conn = httplib.HTTPConnection("www.baidu.com", 80, timeout=3)
-        header = {"user-agent": "Mozilla/5.0 (Windows NT 6.1; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Safari/537.36",
-                  "accept":"application/json, text/javascript, */*; q=0.01",
+        conn = http.client.HTTPConnection("www.baidu.com", 80, timeout=3)
+        header = {"user-agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/46.0.2490.71 Safari/537.36",
+                  "accept":"text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
                   "accept-encoding":"gzip, deflate, sdch",
-                  "accept-language":'en-US,en;q=0.8,ja;q=0.6,zh-CN;q=0.4,zh;q=0.2',
+                  "accept-language":'zh-CN,zh;q=0.8,zh-TW;q=0.6,en-US;q=0.4,en;q=0.2',
                   "connection":"keep-alive"
                   }
         conn.request("HEAD", "/", headers=header)
@@ -122,7 +120,7 @@ def _simple_check_worker():
             xlog.debug("network is ok, cost:%d ms", 1000*(time.time() - time_now))
             return True
     except Exception as e:
-        xlog.warn("network fail:%r", e)
+        xlog.exception("simple check network fail:%r", e)
         network_stat = "Fail"
         last_check_time = time.time()
         return False
@@ -163,7 +161,7 @@ def triger_check_network(force=False):
 
 def _check_ipv6_host(host):
     try:
-        conn = httplib.HTTPConnection(host, 80, timeout=5)
+        conn = http.client.HTTPConnection(host, 80, timeout=5)
         header = {"user-agent": "Mozilla/5.0 (Windows NT 6.1; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Safari/537.36",
                   "accept":"application/json, text/javascript, */*; q=0.01",
                   "accept-encoding":"gzip, deflate, sdch",

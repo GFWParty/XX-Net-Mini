@@ -3,6 +3,7 @@
 __author__ = 'moonshawdo@gamil.com'
 
 import re
+from functools import reduce
 
 def ip_string_to_num(s):
     """Convert dotted IPv4 address to integer."""
@@ -14,7 +15,7 @@ def get_ip_maskc(ip_str):
 
 def ip_num_to_string(ip):
     """Convert 32-bit integer to dotted IPv4 address."""
-    return ".".join(map(lambda n: str(ip >> n & 0xFF), [24, 16, 8, 0]))
+    return ".".join([str(ip >> n & 0xFF) for n in [24, 16, 8, 0]])
 
 
 

@@ -2,9 +2,9 @@
 #monkey.patch_all()
 
 import socket
-import httplib
+import http.client
 import time
-import Queue
+import queue
 import os
 import errno
 import logging
@@ -30,7 +30,6 @@ class HTTP_client():
         self.conn_life = conn_life
         self.cert = cert
 
-
         if not self.http_proxy:
             self.path_base = ""
         else:
@@ -39,7 +38,7 @@ class HTTP_client():
             else:
                 self.path_base = "http://%s:%d" % self.address
 
-        self.sock_pool = Queue.Queue()
+        self.sock_pool = queue.Queue()
 
     def create_sock(self):
         sock = socket.socket(socket.AF_INET)
@@ -69,7 +68,7 @@ class HTTP_client():
             if self.conn_life and time.time() - conn.create_time > self.conn_life:
                 #logging.debug("drop old sock")
                 conn.close()
-                raise
+                raise Exception()
             return conn
         except:
             sock = self.create_sock()
@@ -109,12 +108,12 @@ class HTTP_client():
                 while True:
                     try:
                         data = response.read(8192)
-                    except httplib.IncompleteRead, e:
+                    except http.client.IncompleteRead as e:
                         data = e.partial
                     except Exception as e:
-                        xlog.warn("Transfer-Encoding e:%r ", e)
+                        #xlog.warn("Transfer-Encoding e:%r ", e)
                         return "", False, response
-                    
+
 
                     if not data:
                         break
@@ -134,7 +133,7 @@ class HTTP_client():
                     if start > end:
                         self.sock_pool.put(response.conn)
                         #logging.info("POST t:%d s:%d %d %s", (time.time()-time_request)*1000, length, response.status, req_path)
-                        response_data = "".join(data_buffer)
+                        response_data = b"".join(data_buffer)
                         return response_data, 200, response
 
                     data = response.read(65535)
@@ -151,7 +150,7 @@ class HTTP_client():
                     data_len = len(data)
                     start += data_len
                     data_buffer.append(data)
-        except IOError, e:
+        except IOError as e:
             if e.errno == errno.EPIPE:
                 pass
         except Exception as e:
@@ -159,25 +158,28 @@ class HTTP_client():
             self.sock = None
         return "", 400, response
 
-
     def fetch(self, method, host, path, headers, payload, bufsize=8192, timeout=20):
         request_data = '%s %s HTTP/1.1\r\n' % (method, path)
-        request_data += ''.join('%s: %s\r\n' % (k, v) for k, v in headers.items())
+        request_data += ''.join('%s: %s\r\n' % (k, v) for k, v in list(headers.items()))
         request_data += '\r\n'
+        request_data = request_data.encode()
+
+        if not isinstance(payload, bytes):
+            payload = payload.encode()
 
         #print("request:%s" % request_data)
         #print("payload:%s" % payload)
 
         conn = self.get_conn()
         if not conn:
-            logging.warn("get sock fail")
+            logging.warning("get sock fail")
             return
 
         if len(request_data) + len(payload) < 1300:
-            payload = request_data.encode() + payload
+            payload = request_data + payload
         else:
-            conn.sock.send(request_data.encode())
-            
+            conn.sock.send(request_data)
+
         payload_len = len(payload)
         start = 0
         while start < payload_len:
@@ -186,7 +188,7 @@ class HTTP_client():
             start += sended
 
         conn.sock.settimeout(timeout)
-        response = httplib.HTTPResponse(conn.sock, buffering=True)
+        response = http.client.HTTPResponse(conn.sock)
 
         response.conn = conn
         try:
@@ -194,9 +196,9 @@ class HTTP_client():
             #conn.sock.settimeout(timeout)
             response.begin()
             #conn.sock.settimeout(orig_timeout)
-        except httplib.BadStatusLine as e:
-            logging.warn("fetch bad status line:%r", e)
+        except http.client.BadStatusLine as e:
+            logging.warning("fetch bad status line:%r", e)
             response = None
         except Exception as e:
-            logging.warn("fetch:%r", e)
+            logging.warning("fetch:%r", e)
         return response

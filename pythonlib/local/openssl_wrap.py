@@ -6,6 +6,7 @@ import os
 import select
 import time
 import socket
+from _pyio import IOBase
 
 import OpenSSL
 SSLError = OpenSSL.SSL.WantReadError
@@ -16,7 +17,7 @@ xlog = getLogger("gae_proxy")
 
 ssl_version = ''
 
-class SSLConnection(object):
+class SSLConnection(IOBase):
     """OpenSSL Connection Wrapper"""
 
     def __init__(self, context, sock, ip=None, on_close=None):
@@ -46,7 +47,7 @@ class SSLConnection(object):
             try:
                 return io_func(*args, **kwargs)
             except (OpenSSL.SSL.WantReadError, OpenSSL.SSL.WantX509LookupError):
-                sys.exc_clear()
+                #sys.exc_clear()
                 _, _, errors = select.select([fd], [], [fd], timeout)
                 if errors:
                     break
@@ -54,13 +55,17 @@ class SSLConnection(object):
                 if time_now - time_start > timeout:
                     break
             except OpenSSL.SSL.WantWriteError:
-                sys.exc_clear()
+                #sys.exc_clear()
                 _, _, errors = select.select([], [fd], [fd], timeout)
                 if errors:
                     break
                 time_now = time.time()
                 if time_now - time_start > timeout:
                     break
+            except :
+                # OpenSSL.SSL.Error:
+                # [('SSL routines','ssl3_write_bytes','ssl handshake failure')]
+                break
 
     def accept(self):
         sock, addr = self._sock.accept()
@@ -77,9 +82,13 @@ class SSLConnection(object):
         try:
             return self.__iowait(self._connection.send, data, flags)
         except OpenSSL.SSL.SysCallError as e:
-            if e[0] == -1 and not data:
-                # errors when writing empty strings are expected and can be ignored
-                return 0
+            try:
+                if e[0] == -1 and not data:
+                    # errors when writing empty strings are expected and can be ignored
+                    return 0
+            except:
+                xlog.error("SSL send error e:%r ", e )
+                pass
             raise
 
     def __send_memoryview(self, data, flags=0):
@@ -98,16 +107,35 @@ class SSLConnection(object):
         except OpenSSL.SSL.ZeroReturnError:
             return ''
         except OpenSSL.SSL.SysCallError as e:
-            if e[0] == -1 and 'Unexpected EOF' in e[1]:
-                # errors when reading empty strings are expected and can be ignored
-                return ''
-            raise
+            #if e[0] == -1 and 'Unexpected EOF' in e[1]:
+            # errors when reading empty strings are expected and can be ignored
+            return ''
+            #raise
 
     def read(self, bufsiz, flags=0):
         return self.recv(bufsiz, flags)
 
+    def readinto(self, b):
+        # This method is required for `io` module compatibility.
+        #  NoneType error : temp
+        try:
+            temp = self.read(len(b))
+            if len(temp) == 0:
+                return 0
+            else:
+                b[:len(temp)] = temp
+                return len(temp)
+        except Exception as e:
+            xlog.error("SSL readinto error e:%r ", e )
+            return 0
+
+
+
     def write(self, buf, flags=0):
         return self.sendall(buf, flags)
+
+    def flush(self):
+        pass
 
     def close(self):
         if self._makefile_refs < 1:
@@ -122,7 +150,8 @@ class SSLConnection(object):
 
     def makefile(self, mode='r', bufsize=-1):
         self._makefile_refs += 1
-        return socket._fileobject(self, mode, bufsize, close=True)
+        #return socket._fileobject(self, mode, bufsize, close=True)
+        return self
 
     @staticmethod
     def context_builder(ca_certs=None, cipher_suites=('ALL:!RC4-SHA:!ECDHE-RSA-RC4-SHA:!ECDHE-RSA-AES128-GCM-SHA256:!AES128-GCM-SHA256',)):
@@ -152,7 +181,8 @@ class SSLConnection(object):
         protocol_version = getattr(OpenSSL.SSL, '%s_METHOD' % ssl_version)
         ssl_context = OpenSSL.SSL.Context(protocol_version)
         if ca_certs:
-            ssl_context.load_verify_locations(os.path.abspath(ca_certs))
+            ca_path = ca_certs
+            ssl_context.load_verify_locations(ca_path)
             ssl_context.set_verify(OpenSSL.SSL.VERIFY_PEER, lambda c, x, e, d, ok: ok)
         else:
             ssl_context.set_verify(OpenSSL.SSL.VERIFY_NONE, lambda c, x, e, d, ok: ok)

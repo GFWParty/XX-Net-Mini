@@ -8,8 +8,7 @@ import socket
 import struct
 import threading
 import operator
-import httplib
-from proxy_dir import current_path
+import http.client
 
 
 import socks
@@ -20,7 +19,7 @@ xlog = getLogger("gae_proxy")
 import OpenSSL
 SSLError = OpenSSL.SSL.WantReadError
 
-from config import config
+from .config import config
 
 
 def load_proxy_config():
@@ -40,14 +39,14 @@ def load_proxy_config():
 load_proxy_config()
 
 
-from google_ip import google_ip
-from appids_manager import appid_manager
-from openssl_wrap import SSLConnection
+from .google_ip import google_ip
+from .appids_manager import appid_manager
+from .openssl_wrap import SSLConnection
 
 NetWorkIOError = (socket.error, SSLError, OpenSSL.SSL.Error, OSError)
 
-g_cacertfile = os.path.join(current_path, "cacert.pem")
-import connect_control
+g_cacertfile = os.path.join(config.ROOT_PATH, "cacert.pem")
+from . import connect_control
 
 
 class Connect_pool():
@@ -182,7 +181,7 @@ class Https_connection_manager(object):
         # openssl s_server -accept 443 -key CA.crt -cert CA.crt
 
         # ref: http://vincent.bernat.im/en/blog/2011-ssl-session-reuse-rfc5077.html
-        self.openssl_context = SSLConnection.context_builder(ca_certs=g_cacertfile)
+        self.openssl_context = SSLConnection.context_builder(ca_certs=g_cacertfile.encode())
         self.openssl_context.set_session_id(binascii.b2a_hex(os.urandom(10)))
         if hasattr(OpenSSL.SSL, 'SESS_CACHE_BOTH'):
             self.openssl_context.set_session_cache_mode(OpenSSL.SSL.SESS_CACHE_BOTH)
@@ -238,14 +237,18 @@ class Https_connection_manager(object):
 
         response = None
         try:
+            start_time = time.time()
             ssl_sock.settimeout(10)
             ssl_sock._sock.settimeout(10)
 
             data = request_data.encode()
             ret = ssl_sock.send(data)
             if ret != len(data):
-                xlog.warn("head send len:%d %d", ret, len(data))
-            response = httplib.HTTPResponse(ssl_sock, buffering=True)
+                if ret is None or data is None:
+                    xlog.warn("head send data was flushed when ssl_sock closed")
+                else:
+                    xlog.warn("head send len:%d %d", ret, len(data))
+            response = http.client.HTTPResponse(ssl_sock)
 
             response.begin()
 
@@ -253,13 +256,15 @@ class Https_connection_manager(object):
             if status != 200:
                 xlog.debug("app head fail status:%d", status)
                 raise Exception("app check fail %r" % status)
+            end_time = time.time()
+            xlog.debug("%s head time:%d", ssl_sock.ip, 1000*(end_time-start_time))
             return True
-        except httplib.BadStatusLine as e:
+        except http.client.BadStatusLine as e:
             inactive_time = time.time() - ssl_sock.last_use_time
             xlog.debug("%s keep alive fail, time:%d", ssl_sock.ip, inactive_time)
             return False
         except Exception as e:
-            xlog.warn("%s head %s request fail:%r", ssl_sock.ip, ssl_sock.appid, e)
+            xlog.exception("%s head %s request fail:%r", ssl_sock.ip, ssl_sock.appid, e)
             return False
         finally:
             if response:
@@ -296,6 +301,12 @@ class Https_connection_manager(object):
                 else:
                     self.start_keep_alive(ssl_sock)
 
+            for host in self.host_conn_pool:
+                host_list = self.host_conn_pool[host].get_need_keep_alive(maxtime=self.keep_alive-3)
+
+                for ssl_sock in host_list:
+                    google_ip.report_connect_closed(ssl_sock.ip, "host pool alive_timeout")
+                    ssl_sock.close()
             #self.create_more_connection()
 
             time.sleep(1)
@@ -424,8 +435,6 @@ class Https_connection_manager(object):
         ssl_sock = None
         ip = ip_port[0]
 
-        connect_control.start_connect_register(high_prior=True)
-
         connect_time = 0
         handshake_time = 0
         time_begin = time.time()
@@ -457,6 +466,27 @@ class Https_connection_manager(object):
             connect_time = int((time_connected - time_begin) * 1000)
             handshake_time = int((time_handshaked - time_connected) * 1000)
 
+            def verify_SSL_certificate_issuer(ssl_sock):
+                cert = ssl_sock.get_peer_certificate()
+                if not cert:
+                    #google_ip.report_bad_ip(ssl_sock.ip)
+                    #connect_control.fall_into_honeypot()
+                    raise socket.error(' certficate is none')
+
+                for k, v in cert.get_issuer().get_components():
+                    #xlog.debug("issuer:%s %s", k, v)
+                    if k == b"O":
+                        issuer_commonname = v
+                        break
+                else:
+                    raise socket.error('certficate has no issuer.' )
+
+                if not issuer_commonname.startswith(b'Google'):
+                    google_ip.report_connect_fail(ip, force_remove=True)
+                    raise socket.error(' certficate is issued by %r, not Google' % ( issuer_commonname))
+
+            verify_SSL_certificate_issuer(ssl_sock)
+
             google_ip.update_ip(ip, handshake_time)
             xlog.debug("create_ssl update ip:%s time:%d", ip, handshake_time)
             ssl_sock.fd = sock.fileno()
@@ -465,20 +495,6 @@ class Https_connection_manager(object):
             ssl_sock.load = 0
             ssl_sock.handshake_time = handshake_time
             ssl_sock.host = ''
-
-            def verify_SSL_certificate_issuer(ssl_sock):
-                cert = ssl_sock.get_peer_certificate()
-                if not cert:
-                    #google_ip.report_bad_ip(ssl_sock.ip)
-                    #connect_control.fall_into_honeypot()
-                    raise socket.error(' certficate is none')
-
-                issuer_commonname = next((v for k, v in cert.get_issuer().get_components() if k == 'CN'), '')
-                if not issuer_commonname.startswith('Google'):
-                    google_ip.report_connect_fail(ip, force_remove=True)
-                    raise socket.error(' certficate is issued by %r, not Google' % ( issuer_commonname))
-
-            verify_SSL_certificate_issuer(ssl_sock)
 
             connect_control.report_connect_success()
             return ssl_sock
@@ -497,8 +513,6 @@ class Https_connection_manager(object):
             if sock:
                 sock.close()
             return False
-        finally:
-            connect_control.end_connect_register(high_prior=True)
 
     def get_ssl_connection(self, host=''):
         ssl_sock = None

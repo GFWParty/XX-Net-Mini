@@ -22,6 +22,7 @@ NOTSET = 0
 
 class Logger():
     def __init__(self, buffer_size=0, file_name=None, roll_num=1):
+        self.file_max_size = 1024 * 1024
         self.buffer_lock = threading.Lock()
         self.buffer = {} # id => line
         self.buffer_size = buffer_size
@@ -48,7 +49,7 @@ class Logger():
         elif level == "FATAL":
             self.min_level = FATAL
         else:
-            print("log level not support:%s", level)
+            print(("log level not support:%s", level))
     
     def set_color(self):
         self.err_color = None
@@ -78,8 +79,13 @@ class Logger():
 
     def set_file(self, file_name):
         self.log_filename = file_name
-        if os.path.isfile(file_name) and os.path.getsize(file_name) > 1024 * 1024:
-            self.roll_log()
+        if os.path.isfile(file_name):
+            self.file_size = os.path.getsize(file_name)
+            if self.file_size > self.file_max_size:
+                self.roll_log()
+                self.file_size = 0
+        else:
+            self.file_size = 0
 
         self.log_fd = open(file_name, "w")
 
@@ -90,10 +96,10 @@ class Logger():
             if not os.path.isfile(old_name):
                 continue
 
-            self.info("roll_log %s -> %s", old_name, new_name)
+            #self.info("roll_log %s -> %s", old_name, new_name)
             shutil.move(old_name, new_name)
 
-        shutil.move(self.log_filename, self.log_filename + ".0")
+        shutil.move(self.log_filename, self.log_filename + ".1")
 
     def log(self, level, console_color, html_color, fmt, *args, **kwargs):
         now = datetime.now()
@@ -111,6 +117,14 @@ class Logger():
                     self.log_fd.flush()
                 except:
                     pass
+
+                self.file_size += len(string)
+                if self.file_size > self.file_max_size:
+                    self.log_fd.close()
+                    self.log_fd = None
+                    self.roll_log()
+                    self.log_fd = open(self.log_filename, "w")
+                    self.file_size = 0
 
             if self.buffer_size:
                 self.last_no += 1
@@ -203,14 +217,14 @@ class Logger():
 
     def unicode_line(self, line):
         try:
-            if type(line) is types.UnicodeType:
+            if type(line) is str:
                 return line
             else:
-                return unicode(line, errors='ignore')
+                return str(line, errors='ignore')
         except Exception as e:
-            print("unicode err:%r" % e)
-            print("line can't decode:%s" % line)
-            print("Except stack:%s" % traceback.format_exc())
+            print(("unicode err:%r" % e))
+            print(("line can't decode:%s" % line))
+            print(("Except stack:%s" % traceback.format_exc()))
             return ""
 
 
@@ -220,9 +234,9 @@ loggerDict = {}
 def getLogger(name=None, buffer_size=0, file_name=None, roll_num=1):
     global loggerDict
 
-    if not isinstance(name, basestring):
+    if not isinstance(name, str):
         raise TypeError('A logger name must be string or Unicode')
-    if isinstance(name, unicode):
+    if isinstance(name, str):
         name = name.encode('utf-8')
 
     if name in loggerDict:

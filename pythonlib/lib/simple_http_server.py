@@ -1,8 +1,8 @@
 import os
-import urlparse
+import urllib.parse
 import datetime
 import threading
-import mimetools
+import http.client
 import socket
 import errno
 import sys
@@ -12,21 +12,23 @@ import json
 
 
 import xlog
-logging = xlog.Logger()
+logging = xlog.getLogger("simple_http_server")
 
 
 class HttpServerHandler():
     default_request_version = "HTTP/1.1"
-    MessageClass = mimetools.Message
     rbufsize = -1
     wbufsize = 0
+    command = ""
+    path = ""
 
-    def __init__(self, sock, client, args):
+    def __init__(self, sock, client, args, https=False):
         self.connection = sock
-        self.rfile = socket._fileobject(self.connection, "rb", self.rbufsize)
-        self.wfile = socket._fileobject(self.connection, "wb", self.wbufsize)
+        self.rfile = sock.makefile("rb", self.rbufsize)
+        self.wfile = sock.makefile("wb", self.wbufsize)
         self.client_address = client
         self.args = args
+        self.https = https
         self.setup()
 
     def setup(self):
@@ -99,7 +101,7 @@ class HttpServerHandler():
         self.command, self.path, self.request_version = command, path, version
 
         # Examine the headers and look for a Connection directive
-        self.headers = self.MessageClass(self.rfile, 0)
+        self.headers = http.client.parse_headers(self.rfile)
 
         conntype = self.headers.get('Connection', "")
         if conntype.lower() == 'close':
@@ -111,9 +113,10 @@ class HttpServerHandler():
     def handle_one_request(self):
         try:
             try:
-                self.raw_requestline = self.rfile.readline(65537)
+                line = self.rfile.readline(65535)
+                self.raw_requestline = line.decode('iso-8859-1')
             except Exception as e:
-                #logging.warn("simple server handle except %r", e)
+                #logging.exception("simple server handle except %r", e)
                 return
 
             if len(self.raw_requestline) > 65536:
@@ -140,7 +143,7 @@ class HttpServerHandler():
             elif self.command == "PUT":
                 self.do_PUT()
             else:
-                logging.warn("unhandler cmd:%s", self.command)
+                logging.warn("unhandler cmd:%s path:%s from:%s", self.command, self.path, self.address_string())
                 return
 
             self.wfile.flush() #actually send the response if not already done.
@@ -158,38 +161,38 @@ class HttpServerHandler():
         #except OpenSSL.SSL.SysCallError as e:
         #    logging.warn("socket error:%r", e)
         except Exception as e:
-            logging.exception("handler:%r", e)
+            logging.exception("handler:%r from:%s", e, self.address_string())
             pass
 
     def do_GET(self):
-        pass
+        logging.warn("unhandler cmd:%s from:%s", self.command, self.address_string())
 
     def do_POST(self):
-        pass
+        logging.warn("unhandler cmd:%s from:%s", self.command, self.address_string())
 
     def do_PUT(self):
-        pass
+        logging.warn("unhandler cmd:%s from:%s", self.command, self.address_string())
 
     def do_DELETE(self):
-        pass
+        logging.warn("unhandler cmd:%s from:%s", self.command, self.address_string())
 
     def do_OPTIONS(self):
-        pass
+        logging.warn("unhandler cmd:%s from:%s", self.command, self.address_string())
 
     def do_HEAD(self):
-        pass
+        logging.warn("unhandler cmd:%s from:%s", self.command, self.address_string())
 
     def do_CONNECT(self):
-        pass
+        logging.warn("unhandler cmd:%s from:%s", self.command, self.address_string())
 
     def send_not_found(self):
         self.wfile.write(b'HTTP/1.1 404\r\nContent-Type: text/plain\r\nConnection: close\r\n\r\n404 Not Found')
 
     def send_error(self, code, message=None):
-        self.wfile.write('HTTP/1.1 %d\r\n' % code)
-        self.wfile.write('Connection: close\r\n\r\n')
+        self.wfile.write(('HTTP/1.1 %d\r\n' % code).encode())
+        self.wfile.write(b'Connection: close\r\n\r\n')
         if message:
-            self.wfile.write(message)
+            self.wfile.write(message.encode())
 
     def send_response(self, mimetype="", content="", headers="", status=200):
         data = []
@@ -197,24 +200,24 @@ class HttpServerHandler():
         if len(mimetype):
             data.append('Content-Type: %s\r\n' % mimetype)
 
-        data.append('Content-Length: %s\r\n' % len(content))
+        data.append('Content-Length: %s\r\n' % len(content.encode('utf-8')))
         if len(headers):
             if isinstance(headers, dict):
                 for key in headers:
                     data.append("%s: %s\r\n" % (key, headers[key]))
-            elif isinstance(headers, basestring):
+            elif isinstance(headers, str):
                 data.append(headers)
         data.append("\r\n")
 
         if len(content) < 1024:
             data.append(content)
             data_str = "".join(data)
-            self.wfile.write(data_str)
+            self.wfile.write(data_str.encode())
         else:
             data_str = "".join(data)
-            self.wfile.write(data_str)
+            self.wfile.write(data_str.encode())
             if len(content):
-                self.wfile.write(content)
+                self.wfile.write(content.encode())
 
     def send_file(self, filename, mimetype):
         try:
@@ -245,7 +248,7 @@ class HttpServerHandler():
 
 class HTTPServer():
     def __init__(self, address, handler, args=(), use_https=False, cert=""):
-        self.sockets = None
+        self.sockets = []
         self.running = True
         if isinstance(address, tuple):
             self.server_address = [address]
@@ -260,34 +263,40 @@ class HTTPServer():
         #logging.info("server %s:%d started.", address[0], address[1])
 
     def init_socket(self):
-        if self.sockets is not None:
-            self.server_close()
-
-        self.sockets = []
         for addr in self.server_address:
-            sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-            try:
-                sock.bind(addr)
-            except Exception as e:
-                logging.error("bind to %s:%d fail", addr[0], addr[1])
-                raise e
+            self.add_listen(addr)
 
-            if self.use_https:
-                import OpenSSL
-                ctx = OpenSSL.SSL.Context(OpenSSL.SSL.TLSv1_METHOD)
-                #server.pem's location (containing the server private key and the server certificate).
-                fpem = self.cert
-                ctx.use_privatekey_file(fpem)
-                ctx.use_certificate_file(fpem)
-                sock = OpenSSL.SSL.Connection(ctx, sock)
-            sock.listen(200)
-            self.sockets.append(sock)
-            logging.info("server %s:%d started.", addr[0], addr[1])
+    def add_listen(self, addr):
+        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        try:
+            sock.bind(addr)
+        except Exception as e:
+            logging.error("bind to %s:%d fail", addr[0], addr[1])
+            raise e
+
+        if self.use_https:
+            import OpenSSL
+            if hasattr(OpenSSL.SSL, "TLSv1_2_METHOD"):
+                ssl_version = OpenSSL.SSL.TLSv1_2_METHOD
+            elif hasattr(OpenSSL.SSL, "TLSv1_1_METHOD"):
+                ssl_version = OpenSSL.SSL.TLSv1_1_METHOD
+            elif hasattr(OpenSSL.SSL, "TLSv1_METHOD"):
+                ssl_version = OpenSSL.SSL.TLSv1_METHOD
+
+            ctx = OpenSSL.SSL.Context(ssl_version)
+            #server.pem's location (containing the server private key and the server certificate).
+            fpem = self.cert
+            ctx.use_privatekey_file(fpem)
+            ctx.use_certificate_file(fpem)
+            sock = OpenSSL.SSL.Connection(ctx, sock)
+        sock.listen(200)
+        self.sockets.append(sock)
+        logging.info("server %s:%d started.", addr[0], addr[1])
 
     def serve_forever(self):
         while self.running:
-            r, w, e = select.select(self.sockets, [], [], 1)
+            r, w, e = select.select(self.sockets, [], [], 3)
             for rsock in r:
                 try:
                     (sock, address) = rsock.accept()
@@ -295,13 +304,14 @@ class HTTPServer():
                     logging.warn("socket accept fail(errno: %s).", e.args[0])
                     if e.args[0] == 10022:
                         logging.info("restart socket server.")
+                        self.server_close()
                         self.init_socket()
                     break
                 self.process_connect(sock, address)
 
     def process_connect(self, sock, address):
         #logging.debug("connect from %s:%d", address[0], address[1])
-        client_obj = self.handler(sock, address, self.args)
+        client_obj = self.handler(sock, address, self.args, self.use_https)
         client_thread = threading.Thread(target=client_obj.handle)
         client_thread.start()
 
@@ -311,7 +321,7 @@ class HTTPServer():
     def server_close(self):
         for sock in self.sockets:
             sock.close()
-
+        self.sockets = []
 
 class TestHttpServer(HttpServerHandler):
     def __init__(self, sock, client, args):
@@ -328,15 +338,15 @@ class TestHttpServer(HttpServerHandler):
         return ba
 
     def do_GET(self):
-        url_path = urlparse.urlparse(self.path).path
-        req = urlparse.urlparse(self.path).query
-        reqs = urlparse.parse_qs(req, keep_blank_values=True)
+        url_path = urllib.parse.urlparse(self.path).path
+        req = urllib.parse.urlparse(self.path).query
+        reqs = urllib.parse.parse_qs(req, keep_blank_values=True)
 
-        #logging.debug("GET %s from %s:%d", self.path, self.client_address[0], self.client_address[1])
+        logging.debug("GET %s from %s:%d", self.path, self.client_address[0], self.client_address[1])
 
         if url_path == '/':
             data = "OK\r\n"
-            self.wfile.write('HTTP/1.1 200\r\nAccess-Control-Allow-Origin: *\r\nContent-Length: %d\r\n\r\n%s' %(len(data), data) )
+            self.wfile.write('HTTP/1.1 200\r\nAccess-Control-Allow-Origin: *\r\nContent-Length: %d\r\n\r\n%s' %(len(data.encode('utf-8')), data) )
         elif url_path == '/null':
             mimetype = "application/x-binary"
             if "size" in reqs:
@@ -377,7 +387,6 @@ if __name__ == "__main__":
         data_path = sys.argv[1]
     else:
         data_path = "."
-        
     try:
         main(data_path=data_path)
     except Exception:
@@ -385,4 +394,4 @@ if __name__ == "__main__":
         traceback.print_exc(file=sys.stdout)
     except KeyboardInterrupt:
         sys.exit()
-    
+

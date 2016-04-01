@@ -4,9 +4,8 @@
 import random
 import time
 import os
-import ip_utils
-from config import config
-from proxy_dir import current_path
+from . import ip_utils
+from .config import config
 
 from xlog import getLogger
 xlog = getLogger("gae_proxy")
@@ -14,10 +13,9 @@ xlog = getLogger("gae_proxy")
 random.seed(time.time()* 1000000)
 
 
-
 class IpRange(object):
     def __init__(self):
-        self.default_range_file = os.path.join(current_path, "ip_range.txt")
+        self.default_range_file = os.path.join(config.ROOT_PATH, "ip_range.txt")
         self.user_range_file = os.path.join(config.DATA_PATH, "ip_range.txt")
         self.load_ip_range()
 
@@ -88,7 +86,7 @@ class IpRange(object):
 
     def show_ip_range(self):
         for id in self.ip_range_map:
-            print "[",id,"]:", self.ip_range_map[id]
+            print("[",id,"]:", self.ip_range_map[id])
 
     def get_real_random_ip(self):
         while True:
