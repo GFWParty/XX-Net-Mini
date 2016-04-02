@@ -7,6 +7,7 @@ import socket
 import ssl
 import urlparse
 import re
+import base64
 
 import OpenSSL
 NetWorkIOError = (socket.error, ssl.SSLError, OpenSSL.SSL.Error, OSError)
@@ -23,11 +24,50 @@ import direct_handler
 from connect_control import touch_active
 
 
+class BaseProxyHandlerFilter(object):
+    """base proxy handler filter"""
+    def filter(self, handler):
+        raise NotImplementedError
+
+
+class AuthFilter(BaseProxyHandlerFilter):
+    """authorization filter"""
+    auth_info = "Proxy authentication required"
+    white_list = ['127.0.0.1']
+
+    def __init__(self, username, password):
+        self.username = username
+        self.password = password
+
+    def check_auth_header(self, auth_header):
+        method, _, auth_data = auth_header.partition(' ')
+        if method == 'Basic':
+            username, _, password = base64.b64decode(auth_data).partition(':')
+            if username == self.username and password == self.password:
+                return True
+        return False
+
+    def filter(self, handler):
+        if handler.client_address[0] in self.white_list:
+            return None
+        auth_header = handler.headers.get('Proxy-Authorization') or getattr(handler, 'auth_header', None)
+        if auth_header and self.check_auth_header(auth_header):
+            handler.auth_header = auth_header
+        else:
+            headers = {'Access-Control-Allow-Origin': '*',
+                       'Proxy-Authenticate': 'Basic realm="%s"' % self.auth_info,
+                       'Content-Length': '0',
+                       'Connection': 'keep-alive'}
+            return {'status': 407, 'headers': headers, 'content': ''}
+
+
 class GAEProxyHandler(simple_http_server.HttpServerHandler):
     gae_support_methods = tuple(["GET", "POST", "HEAD", "PUT", "DELETE", "PATCH"])
     bufsize = 256*1024
     max_retry = 3
-    handler_filters = []
+
+    if config.LISTEN_USERNAME:
+        handler_filters = AuthFilter(config.LISTEN_USERNAME, config.LISTEN_PASSWORD)
 
     def setup(self):
         self.__class__.do_GET = self.__class__.do_METHOD
@@ -36,41 +76,6 @@ class GAEProxyHandler(simple_http_server.HttpServerHandler):
         self.__class__.do_HEAD = self.__class__.do_METHOD
         self.__class__.do_DELETE = self.__class__.do_METHOD
         self.__class__.do_OPTIONS = self.__class__.do_METHOD
-
-    def forward_local(self):
-        host = self.headers.get('Host', '')
-        host_ip, _, port = host.rpartition(':')
-        http_client = simple_http_client.HTTP_client((host_ip, int(port)))
-
-        request_headers = dict((k.title(), v) for k, v in self.headers.items())
-        payload = b''
-        if 'Content-Length' in request_headers:
-            try:
-                payload_len = int(request_headers.get('Content-Length', 0))
-                payload = self.rfile.read(payload_len)
-            except Exception as e:
-                xlog.warn('forward_local read payload failed:%s', e)
-                return
-
-        self.parsed_url = urlparse.urlparse(self.path)
-        if len(self.parsed_url[4]):
-            path = '?'.join([self.parsed_url[2], self.parsed_url[4]])
-        else:
-            path = self.parsed_url[2]
-        content, status, response = http_client.request(self.command, path, request_headers, payload)
-        if not status:
-            xlog.warn("forward_local fail")
-            return
-
-        out_list = []
-        out_list.append("HTTP/1.1 %d\r\n" % status)
-        for key, value in response.getheaders():
-            key = key.title()
-            out_list.append("%s: %s\r\n" % (key, value))
-        out_list.append("\r\n")
-        out_list.append(content)
-
-        self.wfile.write("".join(out_list))
 
     def do_METHOD(self):
         touch_active()
@@ -84,14 +89,6 @@ class GAEProxyHandler(simple_http_server.HttpServerHandler):
             self.path = 'http://%s%s' % (host, self.path)
         elif not host and '://' in self.path:
             host = urlparse.urlparse(self.path).netloc
-
-        if host.startswith("127.0.0.1") or host.startswith("localhost"):
-            #xlog.warn("Your browser forward localhost to proxy.")
-            return self.forward_local()
-
-        if host_ip in socket.gethostbyname_ex(socket.gethostname())[-1]:
-            xlog.info("Browse localhost by proxy")
-            return self.forward_local()
 
         self.parsed_url = urlparse.urlparse(self.path)
 
@@ -350,4 +347,3 @@ class GAEProxyHandler(simple_http_server.HttpServerHandler):
                     pass
                 finally:
                     self.__realconnection = None
-

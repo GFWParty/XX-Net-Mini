@@ -9,48 +9,10 @@ import sys
 import select
 import time
 import json
-import base64
 
 
 import xlog
 logging = xlog.Logger()
-
-
-class BaseProxyHandlerFilter(object):
-    """base proxy handler filter"""
-    def filter(self, handler):
-        raise NotImplementedError
-
-
-class AuthFilter(BaseProxyHandlerFilter):
-    """authorization filter"""
-    auth_info = "Proxy authentication required"
-    white_list = ['127.0.0.1']
-
-    def __init__(self, username, password):
-        self.username = username
-        self.password = password
-
-    def check_auth_header(self, auth_header):
-        method, _, auth_data = auth_header.partition(' ')
-        if method == 'Basic':
-            username, _, password = base64.b64decode(auth_data).partition(':')
-            if username == self.username and password == self.password:
-                return True
-        return False
-
-    def filter(self, handler):
-        if handler.client_address[0] in self.white_list:
-            return None
-        auth_header = handler.headers.get('Proxy-Authorization') or getattr(handler, 'auth_header', None)
-        if auth_header and self.check_auth_header(auth_header):
-            handler.auth_header = auth_header
-        else:
-            headers = {'Access-Control-Allow-Origin': '*',
-                       'Proxy-Authenticate': 'Basic realm="%s"' % self.auth_info,
-                       'Content-Length': '0',
-                       'Connection': 'keep-alive'}
-            return {'status': 407, 'headers': headers, 'content': ''}
 
 
 class HttpServerHandler():
@@ -58,7 +20,7 @@ class HttpServerHandler():
     MessageClass = mimetools.Message
     rbufsize = -1
     wbufsize = 0
-    handler_filters = []
+    handler_filters = None
 
     def __init__(self, sock, client, args):
         self.connection = sock
@@ -164,11 +126,10 @@ class HttpServerHandler():
 
             self.parse_request()
 
-            for handler_filter in self.handler_filters:
-                action = handler_filter.filter(self)
-                if not action:
-                    continue
-                return self.send_response('', **action)
+            if self.handler_filters:
+                action = self.handler_filters.filter(self)
+                if action:
+                    return self.send_response('', **action)
 
             if self.command == "GET":
                 self.do_GET()
