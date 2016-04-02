@@ -11,23 +11,21 @@ import base64
 import hashlib
 import threading
 import subprocess
-from proxy_dir import current_path
-
-data_path = os.path.abspath(os.path.join(current_path, 'data'))
-if not os.path.isdir(data_path):
-    data_path = current_path
+import OpenSSL
 
 from xlog import getLogger
 xlog = getLogger("gae_proxy")
-
-import OpenSSL
 
 import ssl, datetime
 from pyasn1.type import univ, constraint, char, namedtype, tag
 from pyasn1.codec.der.decoder import decode
 from pyasn1.error import PyAsn1Error
-
 from config import config
+from proxy_dir import current_path
+
+data_path = os.path.abspath(os.path.join(current_path, 'data'))
+if not os.path.isdir(data_path):
+    data_path = current_path
 
 
 def get_cmd_out(cmd):
@@ -442,7 +440,7 @@ class CertUtil(object):
         if exist_ca_sha1 == ca_hash:
             xlog.info("GoAgent CA exist")
             return
-        import_command = 'security add-trusted-cert -d -r trustRoot -k /Library/Keychains/System.keychain ../../data/gae_proxy/CA.crt'# % certfile.decode('utf-8')
+        import_command = 'security add-trusted-cert -d -r trustRoot -k /Library/Keychains/System.keychain ./data/CA.crt'# % certfile.decode('utf-8')
         if exist_ca_sha1:
             delete_ca_command = 'security delete-certificate -Z %s' % exist_ca_sha1
             exec_command = "%s;%s" % (delete_ca_command, import_command)
