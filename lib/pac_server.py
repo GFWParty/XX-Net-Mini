@@ -122,7 +122,7 @@ class PacUtil(object):
             else:
                 content += '\r\nfunction FindProxyForURLByAdblock(url, host) {return "DIRECT";}\r\n'
         except Exception as e:
-            xlog.exception('update pacfile failed: %r', e)
+            xlog.exception('update_pacfile failed: %r', e)
             return
         try:
             autoproxy_content = base64.b64decode(pac_content)
@@ -131,7 +131,7 @@ class PacUtil(object):
             content += '\r\n' + jsrule + '\r\n'
             xlog.info('%r downloaded and parsed', config.PAC_GFWLIST)
         except Exception as e:
-            xlog.exception('update pacfile failed: %r', e)
+            xlog.exception('update_pacfile failed: %r', e)
             return
 
         open(user_pacfile, 'wb').write(content)
@@ -364,7 +364,7 @@ class PACServerHandler(simple_http_server.HttpServerHandler):
         xlog.info('PACServer from:%s %s %s ', self.address_string(), self.command, self.path)
 
         path = urlparse.urlparse(self.path).path # '/proxy.pac'
-        filename = os.path.normpath('./' + path).lower() # proxy.pac
+        filename = os.path.normpath('./' + path) # proxy.pac
 
         if filename == config.PAC_FILE:
             mimetype = 'text/plain'
@@ -382,7 +382,7 @@ class PACServerHandler(simple_http_server.HttpServerHandler):
             data = data.replace('127.0.0.1:8086', host + ":" + str(config.PAC_PORT))
             self.wfile.write(('HTTP/1.1 200\r\nContent-Type: %s\r\nContent-Length: %s\r\n\r\n' % (mimetype, len(data))).encode())
             self.wfile.write(data)
-        elif filename == 'ca.crt':
+        elif filename.lower() == 'ca.crt':
             mimetype = 'application/x-x509-ca-cert'
             cer_filename = get_file(filename)
             if cer_filename:
