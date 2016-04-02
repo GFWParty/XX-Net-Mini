@@ -71,7 +71,7 @@ if config.log_file:
 
 
 def summary():
-    appids = '|'.join(config.GAE_APPIDS)
+    appids = '|'.join(config.GAE_APPIDS) if config.GAE_APPIDS else 'Using Public APPID'
     if len(appids) > 56:
         appids = appids[:55] + '..'
 

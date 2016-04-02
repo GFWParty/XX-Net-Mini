@@ -14,7 +14,6 @@ xlog = getLogger("gae_proxy")
 from proxy_dir import current_path
 
 
-
 class Config(object):
 
     def load(self):
@@ -47,7 +46,8 @@ class Config(object):
         self.LISTEN_VISIBLE = self.CONFIG.getint('listen', 'visible')
         self.LISTEN_DEBUGINFO = self.CONFIG.getint('listen', 'debuginfo')
 
-        self.GAE_APPIDS = [x.strip() for x in self.CONFIG.get('gae', 'appid').split("|")]
+        self.PUBLIC_APPIDS = [x.strip() for x in self.CONFIG.get('gae', 'public_appid').split("|")]
+        self.GAE_APPIDS = [x.strip() for x in self.CONFIG.get('gae', 'appid').split("|")] if self.CONFIG.get('gae', 'appid') else []
         self.GAE_PASSWORD = self.CONFIG.get('gae', 'password').strip()
 
         fwd_endswith = []
