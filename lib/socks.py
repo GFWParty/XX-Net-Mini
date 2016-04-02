@@ -701,8 +701,3 @@ class socksocket(_BaseSocket):
         if not proxy_port:
             raise GeneralProxyError("Invalid proxy type")
         return proxy_addr, proxy_port
-
-if __name__ == "__main__":
-    name = "abc"
-    name2 = name.encode('idna')
-    print name2

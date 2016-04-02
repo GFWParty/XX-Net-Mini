@@ -89,8 +89,6 @@ def connect_ssl(ip, port=443, timeout=5, openssl_context=None, check_cert=True):
 
     if check_cert:
         issuer_commonname = next((v for k, v in cert.get_issuer().get_components() if k == 'CN'), '')
-        if __name__ == "__main__":
-            xlog.debug("issued by:%s", issuer_commonname)
         if not issuer_commonname.startswith('Google'):
             raise socket.error(' certficate is issued by %r, not Google' % ( issuer_commonname))
 
@@ -113,8 +111,6 @@ def get_ssl_cert_domain(ssl_sock):
 
     #issuer_commonname = next((v for k, v in cert.get_issuer().get_components() if k == 'CN'), '')
     ssl_cert = cert_util.SSLCert(cert)
-    if __name__ == "__main__":
-        xlog.info("%s CN:%s", ip, ssl_cert.cn)
     ssl_sock.domain = ssl_cert.cn
 
 
@@ -125,35 +121,23 @@ def check_goagent(ssl_sock, appid):
 
     response.begin()
     if response.status == 404:
-        if __name__ == "__main__":
-            xlog.warn("app check %s status:%d", appid, response.status)
         return False
 
     if response.status == 503:
         # out of quota
         server_type = response.getheader('Server', "")
         if "gws" not in server_type and "Google Frontend" not in server_type and "GFE" not in server_type:
-            if __name__ == "__main__":
-                xlog.warn("503 but server type:%s", server_type)
             return False
         else:
-            if __name__ == "__main__":
-                xlog.info("503 server type:%s", server_type)
             return True
 
     if response.status != 200:
-        if __name__ == "__main__":
-            xlog.warn("app check %s ip:%s status:%d", appid, ip, response.status)
         return False
 
     content = response.read()
     if "GoAgent" not in content:
-        if __name__ == "__main__":
-            xlog.warn("app check %s content:%s", appid, content)
         return False
 
-    if __name__ == "__main__":
-        xlog.info("check_goagent ok")
     return True
 
 
@@ -170,20 +154,6 @@ def test_gae_ip(ip, appid=None):
 
         return ssl_sock
     except socket.timeout:
-        if __name__ == "__main__":
-            xlog.warn("connect timeout")
         return False
     except Exception as e:
-        if __name__ == "__main__":
-            xlog.exception("test_gae_ip %s e:%r",ip, e)
         return False
-
-
-if __name__ == "__main__":
-    if len(sys.argv) > 1:
-        ip = sys.argv[1]
-        xlog.info("test ip:%s", ip)
-        res = test_gae_ip(ip)
-        print res
-    else:
-        xlog.info("check_ip <ip>")

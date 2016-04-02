@@ -63,10 +63,3 @@ class Scan_ip_log():
         self.log('WARNING', fmt, *args, **kwargs)
 
 scan_ip_log = Scan_ip_log()
-
-
-if __name__ == '__main__':
-    scan_ip_log.info("ADD abc")
-    scan_ip_log.info("ADD ab1")
-    scan_ip_log.info("ADD ab2")
-    scan_ip_log.info("ADD ab3")

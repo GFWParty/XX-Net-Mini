@@ -376,17 +376,3 @@ def main(data_path="."):
 
     while True:
         time.sleep(10)
-
-
-if __name__ == "__main__":
-    if len(sys.argv) > 2:
-        data_path = sys.argv[1]
-    else:
-        data_path = "."
-    try:
-        main(data_path=data_path)
-    except Exception:
-        import traceback
-        traceback.print_exc(file=sys.stdout)
-    except KeyboardInterrupt:
-        sys.exit()
