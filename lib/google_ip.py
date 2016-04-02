@@ -103,7 +103,6 @@ class IpManager():
             self.auto_adjust_scan_ip_thread_num = config.CONFIG.getint("google_ip", "auto_adjust_scan_ip_thread_num")
 
         self.good_ip_file = os.path.abspath( os.path.join(config.DATA_PATH, good_ip_file_name))
-        self.default_good_ip_file = os.path.join(current_path, default_good_ip_file_name)
 
         self.scan_ip_thread_num = self.max_scan_ip_thread_num
         self.max_good_ip_num = config.CONFIG.getint("google_ip", "max_good_ip_num") #3000  # stop scan ip when enough
@@ -113,9 +112,8 @@ class IpManager():
         if os.path.isfile(self.good_ip_file):
             file_path = self.good_ip_file
         else:
-            file_path = self.default_good_ip_file
+            return
 
-        if not os.path.isfile(file_path): return
         with open(file_path, "r") as fd:
             lines = fd.readlines()
 
