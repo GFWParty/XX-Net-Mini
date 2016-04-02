@@ -26,6 +26,7 @@
 * 修改压缩包后缀 zip 为 egg 即可
 
 ### proxy.ini 配置文件说明：
+建议大家在 data 目录新建一份 manual.ini 文件，优先级大于 proxy.ini 设置，避免升级的时候设置丢失。
 ```ini
 [listen]
 ;监听地址，如果需要允许局域网/公网使用，设为0.0.0.0即可，若共享pac此项必须设置为 0.0.0.0
@@ -117,7 +118,9 @@ https_connection_pool_min = 5
 ;最大连接池数值
 https_connection_pool_max = 50
 
-;设置成 1 会在data目录生成日志文件 local.log，便调试用
 [system]
+;设置成 1 会在data目录生成日志文件 local.log，便调试用
 log_file = 0
+;设置是否在data目录输出扫描IP日志 scan_ip.log，超过3000行会新建日志
+log_scan = 1
 ```
