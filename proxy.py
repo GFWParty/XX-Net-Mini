@@ -33,7 +33,7 @@
 #      cnfuyu            <cnfuyu@gmail.com>
 #      cuixin            <steven.cuixin@gmail.com>
 
-__version__ = '1.2.3'
+__version__ = '1.2.4'
 
 import sys
 import os
@@ -55,7 +55,7 @@ if sys.platform.startswith("linux"):
     # reduce resource request for threading, for OpenWrt
     import threading
     threading.stack_size(128*1024)
-elif sys.platform.startswith("darwin"):
+elif sys.platform == "darwin":
     sys.path.append(work_path + '/lib.egg/lib/')
 
 
@@ -189,9 +189,6 @@ def pre_start():
                 error = u'某些安全软件(如 %s)可能和本软件存在冲突，造成 CPU 占用过高。\n如有此现象建议暂时退出此安全软件来继续运行XX-Mini' % ','.join(softwares)
                 ctypes.windll.user32.MessageBoxW(None, error, title, 0)
                 #sys.exit(0)
-    if config.GAE_APPIDS[0] == 'gae_proxy':
-        xlog.critical('please edit %s to add your appid to [gae] !', config.CONFIG_FILENAME)
-        sys.exit(-1)
     if config.PAC_ENABLE:
         pac_ip = config.PAC_IP
         url = 'http://%s:%d/%s' % (pac_ip, config.PAC_PORT, config.PAC_FILE)
@@ -207,8 +204,6 @@ def main():
 
     CertUtil.init_ca()
 
-    if config.LISTEN_USERNAME:
-        proxy_handler.GAEProxyHandler.handler_filters.insert(0, simple_http_server.AuthFilter(config.LISTEN_USERNAME, config.LISTEN_PASSWORD))
     proxy_daemon = simple_http_server.HTTPServer((config.LISTEN_IP, config.LISTEN_PORT), proxy_handler.GAEProxyHandler)
     proxy_thread = threading.Thread(target=proxy_daemon.serve_forever)
     proxy_thread.setDaemon(True)
@@ -219,7 +214,10 @@ def main():
         pac_thread = threading.Thread(target=pac_daemon.serve_forever)
         pac_thread.setDaemon(True)
         pac_thread.start()
-        urllib2.urlopen('http://127.0.0.1:%d/%s' % (config.PAC_PORT, config.PAC_FILE))
+        try:
+            urllib2.urlopen('http://127.0.0.1:%d/%s' % (config.PAC_PORT, config.PAC_FILE))
+        except:
+            pass
 
     while connect_control.keep_running:
         time.sleep(1)
