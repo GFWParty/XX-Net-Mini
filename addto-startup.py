@@ -36,7 +36,7 @@ Comment=XX-Mini GTK Launcher
         if not os.path.exists(dirname):
             os.makedirs(dirname)
         if os.path.isdir(dirname):
-            filename = os.path.join(dirname, 'goagent-gtk.desktop')
+            filename = os.path.join(dirname, 'XX-Mini-gtk.desktop')
             with open(filename, 'w') as fp:
                 fp.write(DESKTOP_FILE)
            # os.chmod(filename, 0755)

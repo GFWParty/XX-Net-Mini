@@ -98,7 +98,7 @@ StartupNotify=true
 ''' % (filename, dirname)
     for dirname in map(os.path.expanduser, ['~/Desktop', u'~/桌面']):
         if os.path.isdir(dirname):
-            filename = os.path.join(dirname, 'goagent-gtk.desktop')
+            filename = os.path.join(dirname, 'XX-Mini-gtk.desktop')
             with open(filename, 'w') as fp:
                 fp.write(DESKTOP_FILE)
             os.chmod(filename, 0755)
