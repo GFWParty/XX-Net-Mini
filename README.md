@@ -20,6 +20,7 @@
 * 之后设置浏览器代理为：127.0.0.1，端口：8087，支持pac自动代理的设置为 `http://127.0.0.1:8086/proxy.pac`
 * 接下来即可使用浏览器翻墙，但公共appid不允许观看视频和下载
 * 在 XX-Mini 目录，输入 `python addto-startup.py` 可以添加系统启动项
+* 在 XX-Mini 目录，输入 `python goagent-gtk.py` 可以显示系统托盘
 
 ### egg 文件打包方法：
 * 将lib文件夹和 `__genpy__.py` 打包成 lib.zip 压缩包
