@@ -57,10 +57,10 @@ try:
     import gtk
     # gtk.gdk.threads_init()
 except Exception:
-    sys.exit(os.system(u'gdialog --title "GoAgent GTK" --msgbox "\u8bf7\u5b89\u88c5 python-gtk2" 15 60'.encode(sys.getfilesystemencoding() or sys.getdefaultencoding(), 'replace')))
+    sys.exit(os.system(u'gdialog --title "XX-Mini GTK" --msgbox "\u8bf7\u5b89\u88c5 python-gtk2" 15 60'.encode(sys.getfilesystemencoding() or sys.getdefaultencoding(), 'replace')))
 try:
     import pynotify
-    pynotify.init('GoAgent Notify')
+    pynotify.init('XX-Mini Notify')
 except ImportError:
     pynotify = None
 try:
@@ -88,10 +88,10 @@ def drop_desktop():
 #!/usr/bin/env xdg-open
 [Desktop Entry]
 Type=Application
-Name=GoAgent GTK
-Comment=GoAgent GTK Launcher
+Name=XX-Mini GTK
+Comment=XX-Mini GTK Launcher
 Categories=Network;Proxy;
-Exec=/usr/bin/env python3 "%s"
+Exec=/usr/bin/env python "%s"
 Icon=%s/goagent-logo.png
 Terminal=false
 StartupNotify=true
@@ -119,8 +119,8 @@ def should_visible():
 class GoAgentGTK:
 
     command = ['/usr/bin/env', 'python3', 'proxy.py']
-    message = u'GoAgent已经启动，单击托盘图标可以最小化'
-    fail_message = u'GoAgent启动失败，请查看控制台窗口的错误信息。'
+    message = u'XX-Mini已经启动，单击托盘图标可以最小化'
+    fail_message = u'XX-Mini启动失败，请查看控制台窗口的错误信息。'
 
     def __init__(self, window, terminal):
         self.window = window
@@ -154,7 +154,7 @@ class GoAgentGTK:
         self.window.set_icon_from_file(logo_filename)
 
         if appindicator:
-            self.trayicon = appindicator.Indicator('GoAgent', 'indicator-messages', appindicator.CATEGORY_APPLICATION_STATUS)
+            self.trayicon = appindicator.Indicator('XX-Mini', 'indicator-messages', appindicator.CATEGORY_APPLICATION_STATUS)
             self.trayicon.set_status(appindicator.STATUS_ACTIVE)
             self.trayicon.set_attention_icon('indicator-messages-new')
             self.trayicon.set_icon(logo_filename)
@@ -164,7 +164,7 @@ class GoAgentGTK:
             self.trayicon.set_from_file(logo_filename)
             self.trayicon.connect('popup-menu', lambda i, b, t: self.make_menu().popup(None, None, gtk.status_icon_position_menu, b, t, self.trayicon))
             self.trayicon.connect('activate', self.show_hide_toggle)
-            self.trayicon.set_tooltip('GoAgent')
+            self.trayicon.set_tooltip('XX-Mini')
             self.trayicon.set_visible(True)
 
     def make_menu(self):
@@ -184,7 +184,7 @@ class GoAgentGTK:
 
     def show_notify(self, message=None, timeout=None):
         if pynotify and message:
-            notification = pynotify.Notification('GoAgent Notify', message)
+            notification = pynotify.Notification('XX-Mini Notify', message)
             notification.set_hint('x', 200)
             notification.set_hint('y', 400)
             if timeout:

@@ -50,16 +50,13 @@ if not os.path.isdir(data_path): os.mkdir(data_path)
 
 # add python lib path
 sys.path.append(os.path.join(work_path, 'pythonlib'))
-sys.path.append(os.path.join(work_path, 'pythonlib', 'lib'))
 if sys.platform.startswith("linux"):
     sys.path.append(os.path.join(work_path, 'pythonlib.egg'))
-    sys.path.append(os.path.join(work_path, 'pythonlib.egg', 'lib'))
     # reduce resource request for threading, for OpenWrt
     import threading
     threading.stack_size(128*1024)
 elif sys.platform == "darwin":
     sys.path.append(os.path.join(work_path, 'pythonlib.egg'))
-    sys.path.append(os.path.join(work_path, 'pythonlib.egg', 'lib'))
 
 
 from local.config import config

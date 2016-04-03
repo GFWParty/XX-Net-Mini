@@ -28,8 +28,8 @@ Icon=%s/goagent-logo.png
 Hidden=false
 NoDisplay=false
 X-GNOME-Autostart-enabled=true
-Name=GoAgent GTK
-Comment=GoAgent GTK Launcher
+Name=XX-Mini GTK
+Comment=XX-Mini GTK Launcher
 ''' % (python2, dirname , scriptname , dirname)
     #sometimes maybe  /etc/xdg/autostart , ~/.kde/Autostart/ , ~/.config/openbox/autostart
     for dirname in map(os.path.expanduser, ['~/.config/autostart']):
