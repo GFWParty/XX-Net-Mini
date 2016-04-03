@@ -12,7 +12,7 @@ import json
 
 
 import xlog
-logging = xlog.getLogger("simple_http_server")
+logging = xlog.Logger()
 
 
 class HttpServerHandler():
@@ -21,6 +21,7 @@ class HttpServerHandler():
     wbufsize = 0
     command = ""
     path = ""
+    handler_filters = None
 
     def __init__(self, sock, client, args, https=False):
         self.connection = sock
@@ -128,6 +129,11 @@ class HttpServerHandler():
 
             self.parse_request()
 
+            if self.handler_filters:
+                action = self.handler_filters.filter(self)
+                if action:
+                    return self.send_response('', **action)
+
             if self.command == "GET":
                 self.do_GET()
             elif self.command == "POST":
@@ -194,7 +200,7 @@ class HttpServerHandler():
         if message:
             self.wfile.write(message.encode())
 
-    def send_response(self, mimetype="", content="", headers="", status=200):
+    def send_response(self, mimetype="", status=200, headers="", content=""):
         data = []
         data.append('HTTP/1.1 %d\r\n' % status)
         if len(mimetype):

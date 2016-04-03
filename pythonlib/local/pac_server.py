@@ -5,44 +5,69 @@ import os
 import base64
 import time
 import re
-import _thread
+import _thread as thread
 import urllib.request, urllib.error, urllib.parse
-import urllib.parse
-
-
 import simple_http_server
 
+from .config import config
 from xlog import getLogger
 xlog = getLogger("gae_proxy")
 
-from .config import config
 
-default_pacfile = os.path.join(config.ROOT_PATH, config.PAC_FILE)
+default_pac = '''//
+function FindProxyForURL(url, host) {
+    var autoproxy = 'PROXY 127.0.0.1:8087';
+    var blackhole = 'PROXY 127.0.0.1:8086';
+    var defaultproxy = 'DIRECT';
+    if (isPlainHostName(host) ||
+        host.indexOf('127.') == 0 ||
+        host.indexOf('192.168.') == 0 ||
+        host.indexOf('10.') == 0 ||
+        shExpMatch(host, 'localhost.*')) {
+        return 'DIRECT';
+    } else if (FindProxyForURLByAdblock(url, host) != defaultproxy ||
+               host == 'p.tanx.com' ||
+               host == 'a.alimama.cn' ||
+               host == 'pagead2.googlesyndication.com' ||
+               dnsDomainIs(host, '.google-analytics.com') ||
+               dnsDomainIs(host, '.2mdn.net') ||
+               dnsDomainIs(host, '.doubleclick.net')) {
+        return blackhole;
+    } else if (shExpMatch(host, '*.google*.*') ||
+               dnsDomainIs(host, '.ggpht.com') ||
+               dnsDomainIs(host, '.wikipedia.org') ||
+               host == 'cdnjs.cloudflare.com' ||
+               host == 'wp.me' ||
+               host == 'po.st' ||
+               host == 'goo.gl') {
+        return autoproxy;
+    } else {
+        return FindProxyForURLByAutoProxy(url, host);
+    }
+}
+
+// AUTO-GENERATED RULES, DO NOT MODIFY!
+'''
+
+
 user_pacfile = os.path.join(config.DATA_PATH, config.PAC_FILE)
 
-root_path = os.path.abspath( os.path.join(config.ROOT_PATH, os.pardir, os.pardir))
-data_root = os.path.join(root_path, 'data')
+def get_file(filename):
+    user_file = os.path.join(config.DATA_PATH, filename)
+    if os.path.isfile(user_file):
+        return user_file
+    return False
 
-gae_proxy_listen = "GOAGENT_LISTEN"
-pac_listen = "PAC_LISTEN"
-
-def get_serving_pacfile():
-    if not os.path.isfile(user_pacfile):
-        serving_pacfile = default_pacfile
-    else:
-        serving_pacfile = user_pacfile
-    return serving_pacfile
 
 def get_opener():
     autoproxy = '127.0.0.1:%s' % config.LISTEN_PORT
 
     import ssl
     if getattr(ssl, "create_default_context", None):
-        cafile = os.path.join(data_root, "CA.crt")
+        cafile = os.path.join(config.DATA_PATH, "CA.crt")
         context = ssl.create_default_context(purpose=ssl.Purpose.SERVER_AUTH,
                                              cafile=cafile)
         https_handler = urllib.request.HTTPSHandler(context=context)
-
         opener = urllib.request.build_opener(urllib.request.ProxyHandler({'http': autoproxy, 'https': autoproxy}), https_handler)
     else:
         opener = urllib.request.build_opener(urllib.request.ProxyHandler({'http': autoproxy, 'https': autoproxy}))
@@ -53,58 +78,50 @@ class PacUtil(object):
     """GAEProxy Pac Util"""
 
     @staticmethod
-    def update_pacfile(filename):
+    def update_pacfile():
         opener = get_opener()
 
-        listen_ip = config.LISTEN_IP
-        autoproxy = gae_proxy_listen
-        blackhole = pac_listen
-        default = 'DIRECT'
+        listen_ip = '127.0.0.1'
+        autoproxy = '%s:%s' % (listen_ip, config.LISTEN_PORT)
+        blackhole = '%s:%s' % (listen_ip, config.PAC_PORT)
+        default = 'PROXY %s:%s' % (config.PROXY_HOST, config.PROXY_PORT) if config.PROXY_ENABLE else 'DIRECT'
 
+        adblock_content = False
         if config.PAC_ADBLOCK:
             try:
-                xlog.info('try download %r to update_pacfile(%r)', config.PAC_ADBLOCK, filename)
-                adblock_content = opener.open(config.PAC_ADBLOCK).read()
+                xlog.info('try download %r to update pacfile', config.PAC_ADBLOCK)
+                adblock_content = opener.open(config.PAC_ADBLOCK).read().decode('iso-8859-1')
             except Exception as e:
                 xlog.warn("pac_update download adblock fail:%r", e)
-                return
-
         try:
-            xlog.info('try download %r to update_pacfile(%r)', config.PAC_GFWLIST, filename)
+            xlog.info('try download %r to update pacfile', config.PAC_GFWLIST)
             pac_content = opener.open(config.PAC_GFWLIST).read().decode('iso-8859-1')
         except Exception as e:
             xlog.warn("pac_update download gfwlist fail:%r", e)
             return
 
-        content = ''
-        need_update = True
-        with open(get_serving_pacfile(), 'rb') as fp:
-            content = fp.read().decode('iso-8859-1')
-
+        content = default_pac
         try:
             placeholder = '// AUTO-GENERATED RULES, DO NOT MODIFY!'
             content = content[:content.index(placeholder)+len(placeholder)]
-            content = re.sub(r'''blackhole\s*=\s*['"]PROXY [\.\w:]+['"]''', 'blackhole = \'PROXY %s\'' % blackhole, content)
-            content = re.sub(r'''autoproxy\s*=\s*['"]PROXY [\.\w:]+['"]''', 'autoproxy = \'PROXY %s\'' % autoproxy, content)
+            content = re.sub(r'''defaultproxy\s*=\s*['"](DIRECT|PROXY [\.\w:]+)['"]''', 'defaultproxy = \'%s\'' % default, content)
             if content.startswith('//'):
                 line = '// Proxy Auto-Config file generated by autoproxy2pac, %s\r\n' % time.strftime('%Y-%m-%d %H:%M:%S')
                 content = line + '\r\n'.join(content.splitlines()[1:])
         except ValueError:
-            need_update = False
-
+            return
         try:
-            if config.PAC_ADBLOCK:
+            if adblock_content:
+                admode = config.PAC_ADMODE
                 xlog.info('%r downloaded, try convert it with adblock2pac', config.PAC_ADBLOCK)
-                jsrule = PacUtil.adblock2pac(adblock_content, 'FindProxyForURLByAdblock', blackhole, default)
+                jsrule = PacUtil.adblock2pac(adblock_content, 'FindProxyForURLByAdblock', blackhole, default, admode)
                 content += '\r\n' + jsrule + '\r\n'
                 xlog.info('%r downloaded and parsed', config.PAC_ADBLOCK)
             else:
                 content += '\r\nfunction FindProxyForURLByAdblock(url, host) {return "DIRECT";}\r\n'
         except Exception as e:
-            need_update = False
             xlog.exception('update_pacfile failed: %r', e)
             return
-
         try:
             autoproxy_content = base64.b64decode(pac_content).decode('iso-8859-1')
             xlog.info('%r downloaded, try convert it with autoproxy2pac', config.PAC_GFWLIST)
@@ -112,77 +129,83 @@ class PacUtil(object):
             content += '\r\n' + jsrule + '\r\n'
             xlog.info('%r downloaded and parsed', config.PAC_GFWLIST)
         except Exception as e:
-            need_update = False
             xlog.exception('update_pacfile failed: %r', e)
             return
 
-        if need_update:
-            with open(user_pacfile, 'wb') as fp:
-                fp.write(content.encode())
-            xlog.info('%r successfully updated', user_pacfile)
-            serving_pacfile = user_pacfile
+        open(user_pacfile, 'wb').write(content.encode())
+        xlog.info('%r successfully updated', user_pacfile)
+
 
     @staticmethod
-    def autoproxy2pac(content, func_name='FindProxyForURLByAutoProxy', proxy=gae_proxy_listen, default='DIRECT', indent=4):
+    def autoproxy2pac(content, func_name='FindProxyForURLByAutoProxy', proxy='127.0.0.1:8087', default='DIRECT', indent=4):
         """Autoproxy to Pac, based on https://github.com/iamamac/autoproxy2pac"""
-        jsLines = []
+        direct_domain_set = set([])
+        proxy_domain_set = set([])
         for line in content.splitlines()[1:]:
-            if line and not line.startswith("!"):
+            if line and not line.startswith(('!', '|!', '||!')):
                 use_proxy = True
                 if line.startswith("@@"):
                     line = line[2:]
                     use_proxy = False
-                return_proxy = 'PROXY %s' % proxy if use_proxy else default
-                if line.startswith('/') and line.endswith('/'):
-                    jsLine = 'if (/%s/i.test(url)) return "%s";' % (line[1:-1], return_proxy)
-                elif line.startswith('||'):
-                    domain = line[2:].lstrip('.')
-                    if len(jsLines) > 0 and ('host.indexOf(".%s") >= 0' % domain in jsLines[-1] or 'host.indexOf("%s") >= 0' % domain in jsLines[-1]):
-                        jsLines.pop()
-                    jsLine = 'if (dnsDomainIs(host, ".%s") || host == "%s") return "%s";' % (domain, domain, return_proxy)
-                elif line.startswith('|'):
-                    jsLine = 'if (url.indexOf("%s") == 0) return "%s";' % (line[1:], return_proxy)
-                elif '*' in line:
-                    jsLine = 'if (shExpMatch(url, "*%s*")) return "%s";' % (line.strip('*'), return_proxy)
-                elif '/' not in line:
-                    jsLine = 'if (host.indexOf("%s") >= 0) return "%s";' % (line, return_proxy)
-                else:
-                    jsLine = 'if (url.indexOf("%s") >= 0) return "%s";' % (line, return_proxy)
-                jsLine = ' ' * indent + jsLine
+                domain = ''
+                try:
+                    if line.startswith('/') and line.endswith('/'):
+                        line = line[1:-1]
+                        if line.startswith('^https?:\\/\\/[^\\/]+') and re.match(r'^(\w|\\\-|\\\.)+$', line[18:]):
+                            domain = line[18:].replace(r'\.', '.')
+                        else:
+                            xlog.warning('unsupport gfwlist regex: %r', line)
+                    elif line.startswith('||'):
+                        domain = line[2:].lstrip('*').rstrip('/')
+                    elif line.startswith('|'):
+                        domain = urllib.parse.urlsplit(line[1:]).hostname.lstrip('*')
+                    elif line.startswith(('http://', 'https://')):
+                        domain = urllib.parse.urlsplit(line).hostname.lstrip('*')
+                    elif re.search(r'^([\w\-\_\.]+)([\*\/]|$)', line):
+                        domain = re.split(r'[\*\/]', line)[0]
+                    else:
+                        pass
+                except Exception as e:
+                    xlog.warning('error when process gfwlist rule: %r %s', line, e)
+                if '*' in domain:
+                    domain = domain.split('*')[-1]
+                if not domain or re.match(r'^\w+$', domain):
+                    xlog.debug('unsupport gfwlist rule: %r', line)
+                    continue
                 if use_proxy:
-                    jsLines.append(jsLine)
+                    proxy_domain_set.add(domain)
                 else:
-                    jsLines.insert(0, jsLine)
-        function = 'function %s(url, host) {\r\n%s\r\n%sreturn "%s";\r\n}' % (func_name, '\n'.join(jsLines), ' '*indent, default)
-        return function
+                    direct_domain_set.add(domain)
+        proxy_domain_list = sorted(set(x.lstrip('.') for x in proxy_domain_set))
+        autoproxy_host = ',\r\n'.join('%s"%s": 1' % (' '*indent, x) for x in proxy_domain_list)
+        template = '''\
+                    var autoproxy_host = {
+                    %(autoproxy_host)s
+                    };
+                    function %(func_name)s(url, host) {
+                        var lastPos;
+                        do {
+                            if (autoproxy_host.hasOwnProperty(host)) {
+                                return 'PROXY %(proxy)s';
+                            }
+                            lastPos = host.indexOf('.') + 1;
+                            host = host.slice(lastPos);
+                        } while (lastPos >= 1);
+                        return '%(default)s';
+                    }'''
+        template = re.sub(r'(?m)^\s{%d}' % min(len(re.search(r' +', x).group()) for x in template.splitlines()), '', template)
+        template_args = {'autoproxy_host': autoproxy_host,
+                         'func_name': func_name,
+                         'proxy': proxy,
+                         'default': default}
+        return template % template_args
+
 
     @staticmethod
-    def urlfilter2pac(content, func_name='FindProxyForURLByUrlfilter', proxy='127.0.0.1:8086', default='DIRECT', indent=4):
-        """urlfilter.ini to Pac, based on https://github.com/iamamac/autoproxy2pac"""
-        jsLines = []
-        for line in content[content.index('[exclude]'):].splitlines()[1:]:
-            if line and not line.startswith(';'):
-                use_proxy = True
-                if line.startswith("@@"):
-                    line = line[2:]
-                    use_proxy = False
-                return_proxy = 'PROXY %s' % proxy if use_proxy else default
-                if '*' in line:
-                    jsLine = 'if (shExpMatch(url, "%s")) return "%s";' % (line, return_proxy)
-                else:
-                    jsLine = 'if (url == "%s") return "%s";' % (line, return_proxy)
-                jsLine = ' ' * indent + jsLine
-                if use_proxy:
-                    jsLines.append(jsLine)
-                else:
-                    jsLines.insert(0, jsLine)
-        function = 'function %s(url, host) {\r\n%s\r\n%sreturn "%s";\r\n}' % (func_name, '\n'.join(jsLines), ' '*indent, default)
-        return function
-
-    @staticmethod
-    def adblock2pac(content, func_name='FindProxyForURLByAdblock', proxy='127.0.0.1:8086', default='DIRECT', indent=4):
+    def adblock2pac(content, func_name='FindProxyForURLByAdblock', proxy='127.0.0.1:8086', default='DIRECT', admode=1, indent=4):
         """adblock list to Pac, based on https://github.com/iamamac/autoproxy2pac"""
-        jsLines = []
+        white_conditions = {'host': [], 'url.indexOf': [], 'shExpMatch': []}
+        black_conditions = {'host': [], 'url.indexOf': [], 'shExpMatch': []}
         for line in content.splitlines()[1:]:
             if not line or line.startswith('!') or '##' in line or '#@#' in line:
                 continue
@@ -210,77 +233,125 @@ class PacUtil(object):
                 if '/' not in line:
                     use_domain = True
                 else:
-                    if not line.startswith('http://'):
-                        line = 'http://' + line
                     use_start = True
             elif '|' == line[0]:
                 line = line[1:]
-                if not line.startswith('http://'):
-                    line = 'http://' + line
                 use_start = True
             if line[-1] in ('^', '|'):
                 line = line[:-1]
                 if not use_postfix:
                     use_end = True
-            return_proxy = 'PROXY %s' % proxy if use_proxy else default
             line = line.replace('^', '*').strip('*')
+            conditions = black_conditions if use_proxy else white_conditions
             if use_start and use_end:
-                if '*' in line:
-                    jsLine = 'if (shExpMatch(url, "%s")) return "%s";' % (line, return_proxy)
-                else:
-                    jsLine = 'if (url == "%s") return "%s";' % (line, return_proxy)
+                conditions['shExpMatch'] += ['*%s*' % line]
             elif use_start:
                 if '*' in line:
                     if use_postfix:
-                        jsCondition = ' || '.join('shExpMatch(url, "%s*%s")' % (line, x) for x in use_postfix)
-                        jsLine = 'if (%s) return "%s";' % (jsCondition, return_proxy)
+                        conditions['shExpMatch'] += ['*%s*%s' % (line, x) for x in use_postfix]
                     else:
-                        jsLine = 'if (shExpMatch(url, "%s*")) return "%s";' % (line, return_proxy)
+                        conditions['shExpMatch'] += ['*%s*' % line]
                 else:
-                    jsLine = 'if (url.indexOf("%s") == 0) return "%s";' % (line, return_proxy)
+                    conditions['url.indexOf'] += [line]
             elif use_domain and use_end:
                 if '*' in line:
-                    jsLine = 'if (shExpMatch(host, "%s*")) return "%s";' % (line, return_proxy)
+                    conditions['shExpMatch'] += ['%s*' % line]
                 else:
-                    jsLine = 'if (host == "%s") return "%s";' % (line, return_proxy)
+                    conditions['host'] += [line]
             elif use_domain:
                 if line.split('/')[0].count('.') <= 1:
                     if use_postfix:
-                        jsCondition = ' || '.join('shExpMatch(url, "http://*.%s*%s")' % (line, x) for x in use_postfix)
-                        jsLine = 'if (%s) return "%s";' % (jsCondition, return_proxy)
+                        conditions['shExpMatch'] += ['*.%s*%s' % (line, x) for x in use_postfix]
                     else:
-                        jsLine = 'if (shExpMatch(url, "http://*.%s*")) return "%s";' % (line, return_proxy)
+                        conditions['shExpMatch'] += ['*.%s*' % line]
                 else:
                     if '*' in line:
                         if use_postfix:
-                            jsCondition = ' || '.join('shExpMatch(url, "http://%s*%s")' % (line, x) for x in use_postfix)
-                            jsLine = 'if (%s) return "%s";' % (jsCondition, return_proxy)
+                            conditions['shExpMatch'] += ['*%s*%s' % (line, x) for x in use_postfix]
                         else:
-                            jsLine = 'if (shExpMatch(url, "http://%s*")) return "%s";' % (line, return_proxy)
+                            conditions['shExpMatch'] += ['*%s*' % line]
                     else:
                         if use_postfix:
-                            jsCondition = ' || '.join('shExpMatch(url, "http://%s*%s")' % (line, x) for x in use_postfix)
-                            jsLine = 'if (%s) return "%s";' % (jsCondition, return_proxy)
+                            conditions['shExpMatch'] += ['*%s*%s' % (line, x) for x in use_postfix]
                         else:
-                            jsLine = 'if (url.indexOf("http://%s") == 0) return "%s";' % (line, return_proxy)
+                            conditions['url.indexOf'] += ['http://%s' % line]
             else:
                 if use_postfix:
-                    jsCondition = ' || '.join('shExpMatch(url, "*%s*%s")' % (line, x) for x in use_postfix)
-                    jsLine = 'if (%s) return "%s";' % (jsCondition, return_proxy)
+                    conditions['shExpMatch'] += ['*%s*%s' % (line, x) for x in use_postfix]
                 else:
-                    jsLine = 'if (shExpMatch(url, "*%s*")) return "%s";' % (line, return_proxy)
-            jsLine = ' ' * indent + jsLine
-            if use_proxy:
-                jsLines.append(jsLine)
-            else:
-                jsLines.insert(0, jsLine)
-        function = 'function %s(url, host) {\r\n%s\r\n%sreturn "%s";\r\n}' % (func_name, '\n'.join(jsLines), ' '*indent, default)
-        return function
+                    conditions['shExpMatch'] += ['*%s*' % line]
+        templates = ['''\
+                    function %(func_name)s(url, host) {
+                        return '%(default)s';
+                    }''',
+                    '''\
+                    var blackhole_host = {
+                    %(blackhole_host)s
+                    };
+                    function %(func_name)s(url, host) {
+                        // untrusted ablock plus list, disable whitelist until chinalist come back.
+                        if (blackhole_host.hasOwnProperty(host)) {
+                            return 'PROXY %(proxy)s';
+                        }
+                        return '%(default)s';
+                    }''',
+                    '''\
+                    var blackhole_host = {
+                    %(blackhole_host)s
+                    };
+                    var blackhole_url_indexOf = [
+                    %(blackhole_url_indexOf)s
+                    ];
+                    function %s(url, host) {
+                        // untrusted ablock plus list, disable whitelist until chinalist come back.
+                        if (blackhole_host.hasOwnProperty(host)) {
+                            return 'PROXY %(proxy)s';
+                        }
+                        for (i = 0; i < blackhole_url_indexOf.length; i++) {
+                            if (url.indexOf(blackhole_url_indexOf[i]) >= 0) {
+                                return 'PROXY %(proxy)s';
+                            }
+                        }
+                        return '%(default)s';
+                    }''',
+                    '''\
+                    var blackhole_host = {
+                    %(blackhole_host)s
+                    };
+                    var blackhole_url_indexOf = [
+                    %(blackhole_url_indexOf)s
+                    ];
+                    var blackhole_shExpMatch = [
+                    %(blackhole_shExpMatch)s
+                    ];
+                    function %(func_name)s(url, host) {
+                        // untrusted ablock plus list, disable whitelist until chinalist come back.
+                        if (blackhole_host.hasOwnProperty(host)) {
+                            return 'PROXY %(proxy)s';
+                        }
+                        for (i = 0; i < blackhole_url_indexOf.length; i++) {
+                            if (url.indexOf(blackhole_url_indexOf[i]) >= 0) {
+                                return 'PROXY %(proxy)s';
+                            }
+                        }
+                        for (i = 0; i < blackhole_shExpMatch.length; i++) {
+                            if (shExpMatch(url, blackhole_shExpMatch[i])) {
+                                return 'PROXY %(proxy)s';
+                            }
+                        }
+                        return '%(default)s';
+                    }''']
+        template = re.sub(r'(?m)^\s{%d}' % min(len(re.search(r' +', x).group()) for x in templates[admode].splitlines()), '', templates[admode])
+        template_kwargs = {'blackhole_host': ',\r\n'.join("%s'%s': 1" % (' '*indent, x) for x in sorted(black_conditions['host'])),
+                           'blackhole_url_indexOf': ',\r\n'.join("%s'%s'" % (' '*indent, x) for x in sorted(black_conditions['url.indexOf'])),
+                           'blackhole_shExpMatch': ',\r\n'.join("%s'%s'" % (' '*indent, x) for x in sorted(black_conditions['shExpMatch'])),
+                           'func_name': func_name,
+                           'proxy': proxy,
+                           'default': default}
+        return template % template_kwargs
 
 
 class PACServerHandler(simple_http_server.HttpServerHandler):
-    onepixel = 'GIF89a\x01\x00\x01\x00\x80\xff\x00\xc0\xc0\xc0\x00\x00\x00!\xf9\x04\x01\x00\x00\x00\x00,\x00\x00\x00\x00\x01\x00\x01\x00\x00\x02\x02D\x01\x00;'
-
     def address_string(self):
         return '%s:%s' % self.client_address[:2]
 
@@ -288,53 +359,36 @@ class PACServerHandler(simple_http_server.HttpServerHandler):
         self.wfile.write(b'HTTP/1.1 403\r\nConnection: close\r\n\r\n')
 
     def do_GET(self):
-        xlog.info('PAC from:%s %s %s ', self.address_string(), self.command, self.path)
+        xlog.info('PACServer from:%s %s %s ', self.address_string(), self.command, self.path)
 
         path = urllib.parse.urlparse(self.path).path # '/proxy.pac'
         filename = os.path.normpath('./' + path) # proxy.pac
 
-        if self.path.startswith(('http://', 'https://')):
-            data = 'HTTP/1.1 200\r\nCache-Control: max-age=86400\r\nExpires:Oct, 01 Aug 2100 00:00:00 GMT\r\nConnection: close\r\n'
-            if filename.endswith(('.jpg', '.gif', '.jpeg', '.bmp')):
-                data += 'Content-Type: image/gif\r\n\r\n' + self.onepixel
+        if filename == config.PAC_FILE:
+            mimetype = 'text/plain'
+            pac_filename = get_file(filename)
+            outdate_time = time.time() - os.path.getmtime(pac_filename) if pac_filename else 99999999
+            if self.path.endswith('.pac?flush') or outdate_time > config.PAC_EXPIRED:
+                thread.start_new_thread(PacUtil.update_pacfile, ())
+            if pac_filename:
+                data = open(pac_filename, 'rb').read().decode('iso-8859-1')
             else:
-                data += '\r\n This is the Pac server, not proxy port, use 8087 as proxy port.'
-            self.wfile.write(data.encode())
-            xlog.info('%s "%s %s HTTP/1.1" 200 -', self.address_string(), self.command, self.path)
-            return
-
-        # check for '..', which will leak file
-        if re.search(r'(\.{2})', self.path) is not None:
-            self.wfile.write(b'HTTP/1.1 404\r\n\r\n')
-            xlog.warn('%s %s %s haking', self.address_string(), self.command, self.path )
-            return
-
-
-        if filename != 'proxy.pac':
-            xlog.warn("pac_server GET %s fail", filename)
-            self.wfile.write(b'HTTP/1.1 404\r\n\r\n')
-            return
-
-        mimetype = 'text/plain'
-        if self.path.endswith('.pac?flush') or time.time() - os.path.getmtime(get_serving_pacfile()) > config.PAC_EXPIRED:
-            _thread.start_new_thread(PacUtil.update_pacfile, (user_pacfile,))
-
-        pac_filename = get_serving_pacfile()
-        with open(pac_filename, 'rb') as fp:
-            data = fp.read().decode('iso-8859-1')
-
-        host = self.headers['Host']
-        host, _, port = host.rpartition(":")
-        gae_proxy_proxy = host + ":" + str(config.LISTEN_PORT)
-        pac_proxy = host + ":" + str(config.PAC_PORT)
-        data = data.replace(gae_proxy_listen, gae_proxy_proxy)
-        data = data.replace(pac_listen, pac_proxy)
-        self.wfile.write(('HTTP/1.1 200\r\nContent-Type: %s\r\nContent-Length: %s\r\n\r\n' % (mimetype, len(data))).encode())
-        self.wfile.write(data.encode())
-
-    def send_file(self, filename, mimetype):
-        with open(filename, 'rb') as fp:
-            data = fp.read()
-        if data:
+                return
+            host = self.headers['Host']
+            host, _, port = host.rpartition(":")
+            data = data.replace('127.0.0.1:8087', host + ":" + str(config.LISTEN_PORT))
+            data = data.replace('127.0.0.1:8086', host + ":" + str(config.PAC_PORT))
             self.wfile.write(('HTTP/1.1 200\r\nContent-Type: %s\r\nContent-Length: %s\r\n\r\n' % (mimetype, len(data))).encode())
+            self.wfile.write(data.encode())
+        elif filename.lower() == 'ca.crt':
+            mimetype = 'application/x-x509-ca-cert'
+            cer_filename = get_file(filename)
+            if cer_filename:
+                data = open(cer_filename, 'rb').read()
+            else:
+                return
+            self.wfile.write(('HTTP/1.1 200\r\nContent-Disposition: inline; filename=CA.crt\r\nContent-Type: %s\r\nContent-Length: %s\r\n\r\n' % (mimetype, len(data))).encode())
             self.wfile.write(data)
+        else:
+            xlog.warn("PACServer GET %s fail", filename)
+            return self.wfile.write(('HTTP/1.1 404\r\nContent-Length: 0\r\n\r\n').encode())

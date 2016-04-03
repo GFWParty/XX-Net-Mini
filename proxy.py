@@ -33,51 +33,37 @@
 #      cnfuyu            <cnfuyu@gmail.com>
 #      cuixin            <steven.cuixin@gmail.com>
 
-
-
+__version__ = '1.0'
 
 import sys
 import os
 
 sys.dont_write_bytecode = True
 
-current_path = os.path.dirname(os.path.abspath(__file__))
-data_path = os.path.join(current_path, 'data')
-
-# add python lib path
-sys.path.append(os.path.join(current_path, 'pythonlib'))
-sys.path.append(os.path.join(current_path, 'pythonlib', 'lib'))
-if sys.platform.startswith("linux"):
-    sys.path.append(os.path.join(current_path, 'pythonlib.egg'))
-    sys.path.append(os.path.join(current_path, 'pythonlib.egg', 'lib'))
-    # reduce resource request for threading, for OpenWrt
-    import threading
-    threading.stack_size(128*1024)
-elif sys.platform == "darwin":
-    sys.path.append(os.path.join(current_path, 'pythonlib.egg'))
-    sys.path.append(os.path.join(current_path, 'pythonlib.egg', 'lib'))
-
-import time
-import traceback
-import platform
-import random
-import threading
-import urllib.request, urllib.error, urllib.parse
-
 __file__ = os.path.abspath(__file__)
 if os.path.islink(__file__):
     __file__ = getattr(os, 'readlink', lambda x: x)(__file__)
 work_path = os.path.dirname(os.path.abspath(__file__))
 os.chdir(work_path)
+data_path = os.path.join(work_path, 'data')
+if not os.path.isdir(data_path): os.mkdir(data_path)
 
-
-def create_data_path():
-    if not os.path.isdir(data_path):
-        os.mkdir(data_path)
-create_data_path()
+# add python lib path
+sys.path.append(os.path.join(work_path, 'pythonlib'))
+sys.path.append(os.path.join(work_path, 'pythonlib', 'lib'))
+if sys.platform.startswith("linux"):
+    sys.path.append(os.path.join(work_path, 'pythonlib.egg'))
+    sys.path.append(os.path.join(work_path, 'pythonlib.egg', 'lib'))
+    # reduce resource request for threading, for OpenWrt
+    import threading
+    threading.stack_size(128*1024)
+elif sys.platform == "darwin":
+    sys.path.append(os.path.join(work_path, 'pythonlib.egg'))
+    sys.path.append(os.path.join(work_path, 'pythonlib.egg', 'lib'))
 
 
 from local.config import config
+from OpenSSL import version as openssl_version
 
 from xlog import getLogger
 xlog = getLogger("gae_proxy")
@@ -86,16 +72,46 @@ if config.log_file:
     log_file = os.path.join(data_gae_proxy_path, "local.log")
     xlog.set_file(log_file)
 
-from local.cert_util import CertUtil
-from local import pac_server
+
+def summary():
+    appids = '|'.join(config.GAE_APPIDS) if config.GAE_APPIDS else 'Using Public APPID'
+    if len(appids) > 56:
+        appids = appids[:55] + '..'
+
+    pac_ip = config.PAC_IP
+    if config.PAC_IP != '127.0.0.1':
+        pac_ip = config.get_listen_ip()
+
+    info  = '-'*80
+    info += '\nXX-Mini Version     : %s (python/%s pyopenssl/%s)\n' % (__version__, sys.version.split()[0], openssl_version.__version__)
+    info += 'Listen Address      : %s:%d\n' % (config.LISTEN_IP if config.LISTEN_IP == '127.0.0.1' else config.get_listen_ip(), config.LISTEN_PORT)
+    info += 'Setting File        : %sproxy.ini\n' % (config.MANUAL_LOADED + '/' if config.MANUAL_LOADED else '')
+    info += '%s Proxy %s : %s:%s\n' % (config.PROXY_TYPE, ' '*(12-len(config.PROXY_TYPE)), config.PROXY_HOST, config.PROXY_PORT) if config.PROXY_ENABLE else ''
+    info += 'GAE APPID           : %s\n' % appids
+    info += 'Pac Server          : http://%s:%d/%s\n' % (pac_ip, config.PAC_PORT, config.PAC_FILE) if config.PAC_ENABLE else ''
+    info += 'CA File             : http://%s:%d/%s\n' % (pac_ip, config.PAC_PORT, 'CA.crt') if config.PAC_ENABLE else ''
+    info += 'Pac File            : file://%s\n' % os.path.abspath(os.path.join(data_path, config.PAC_FILE)) if config.PAC_ENABLE else ''
+    info += '-'*80
+    return info
+
+xlog.info(summary())
+xlog.set_time()
+if config.LISTEN_DEBUGINFO:
+    xlog.set_debug()
+
+import time
+import random
+import threading
+import urllib.request, urllib.error, urllib.parse
+
 import simple_http_server
 from local import proxy_handler
 from local import connect_control
 from local import connect_manager
+from local.cert_util import CertUtil
 from local.gae_handler import spawn_later
+from local.pac_server import PACServerHandler
 
-# launcher/module_init will check this value for start/stop finished
-ready = False
 
 def pre_start():
 
@@ -157,12 +173,12 @@ def pre_start():
             pass
     elif os.name == 'nt':
         import ctypes
-        ctypes.windll.kernel32.SetConsoleTitleW('GoAgent ')
+        ctypes.windll.kernel32.SetConsoleTitleW('XX-Mini v%s' % __version__)
         if not config.LISTEN_VISIBLE:
             ctypes.windll.user32.ShowWindow(ctypes.windll.kernel32.GetConsoleWindow(), 0)
         else:
             ctypes.windll.user32.ShowWindow(ctypes.windll.kernel32.GetConsoleWindow(), 1)
-        if config.LOVE_ENABLE and random.randint(1, 100) <= 5:
+        if config.LOVE_ENABLE and random.randint(1, 100) <= 20:
             title = ctypes.create_unicode_buffer(1024)
             ctypes.windll.kernel32.GetConsoleTitleW(ctypes.byref(title), len(title)-1)
             ctypes.windll.kernel32.SetConsoleTitleW('%s %s' % (title.value, random.choice(config.LOVE_TIP)))
@@ -173,8 +189,8 @@ def pre_start():
             tasklist = '\n'.join(x.name for x in get_windows_running_process_list()).lower()
             softwares = [x for x in softwares if x.lower() in tasklist]
             if softwares:
-                title = 'GoAgent 建议'
-                error = '某些安全软件(如 %s)可能和本软件存在冲突，造成 CPU 占用过高。\n如有此现象建议暂时退出此安全软件来继续运行GoAgent' % ','.join(softwares)
+                title = 'XX-Mini 建议'
+                error = '某些安全软件(如 %s)可能和本软件存在冲突，造成 CPU 占用过高。\n如有此现象建议暂时退出此安全软件来继续运行XX-Mini' % ','.join(softwares)
                 ctypes.windll.user32.MessageBoxW(None, error, title, 0)
                 #sys.exit(0)
     if config.PAC_ENABLE:
@@ -183,44 +199,12 @@ def pre_start():
         spawn_later(600, urllib.request.build_opener(urllib.request.ProxyHandler({})).open, url)
 
 
-def log_info():
-    xlog.info('------------------------------------------------------')
-    xlog.info('Python Version     : %s', platform.python_version())
-    xlog.info('Listen Address     : %s:%d', config.LISTEN_IP, config.LISTEN_PORT)
-    if config.CONTROL_ENABLE:
-        xlog.info('Control Address    : %s:%d', config.CONTROL_IP, config.CONTROL_PORT)
-    if config.PROXY_ENABLE:
-        xlog.info('%s Proxy    : %s:%s', config.PROXY_TYPE, config.PROXY_HOST, config.PROXY_PORT)
-    xlog.info('GAE APPID          : %s', '|'.join(config.GAE_APPIDS))
-    if config.PAC_ENABLE:
-        xlog.info('Pac Server         : http://%s:%d/%s', config.PAC_IP, config.PAC_PORT, config.PAC_FILE)
-        #info += 'Pac File           : file://%s\n' % os.path.join(self.DATA_PATH, self.PAC_FILE)
-    xlog.info('------------------------------------------------------')
-
-
 def main():
-    global ready
+    pre_start()
 
     connect_control.keep_running = True
-    config.load()
     connect_manager.https_manager.load_config()
-
     xlog.debug("## GAEProxy set keep_running: %s", connect_control.keep_running)
-    # to profile gae_proxy, run proxy.py, visit some web by proxy, then visit http://127.0.0.1:8084/quit to quit and print result.
-    do_profile = False
-    if do_profile:
-        import cProfile, pstats
-        pr = cProfile.Profile()
-        pr.enable()
-
-    global __file__
-    __file__ = os.path.abspath(__file__)
-    if os.path.islink(__file__):
-        __file__ = getattr(os, 'readlink', lambda x: x)(__file__)
-    os.chdir(os.path.dirname(os.path.abspath(__file__)))
-    #xlog.basicConfig(level=xlog.DEBUG if config.LISTEN_DEBUGINFO else xlog.INFO, format='%(levelname)s - %(asctime)s %(message)s', datefmt='[%b %d %H:%M:%S]')
-    pre_start()
-    log_info()
 
     CertUtil.init_ca()
 
@@ -230,17 +214,18 @@ def main():
     proxy_thread.start()
 
     if config.PAC_ENABLE:
-        pac_daemon = simple_http_server.HTTPServer((config.PAC_IP, config.PAC_PORT), pac_server.PACServerHandler)
+        pac_daemon = simple_http_server.HTTPServer((config.PAC_IP, config.PAC_PORT), PACServerHandler)
         pac_thread = threading.Thread(target=pac_daemon.serve_forever)
         pac_thread.setDaemon(True)
         pac_thread.start()
-
-    ready = True  # checked by launcher.module_init
+        try:
+            urllib2.urlopen('http://127.0.0.1:%d/%s' % (config.PAC_PORT, config.PAC_FILE))
+        except:
+            pass
 
     while connect_control.keep_running:
         time.sleep(1)
 
-    xlog.info("Exiting gae_proxy module...")
     proxy_daemon.shutdown()
     proxy_daemon.server_close()
     proxy_thread.join()
@@ -248,26 +233,17 @@ def main():
         pac_daemon.shutdown()
         pac_daemon.server_close()
         pac_thread.join()
-    ready = False  # checked by launcher.module_init
-    xlog.debug("## GAEProxy set keep_running: %s", connect_control.keep_running)
-
-    if do_profile:
-        pr.disable()
-        pr.print_stats()
 
 
-# called by launcher/module/stop
 def terminate():
     xlog.info("start to terminate GAE_Proxy")
     connect_control.keep_running = False
     xlog.debug("## Set keep_running: %s", connect_control.keep_running)
+    sys.exit()
 
 
 if __name__ == '__main__':
     try:
         main()
-    except Exception:
-        traceback.print_exc(file=sys.stdout)
     except KeyboardInterrupt:
         terminate()
-        sys.exit()

@@ -5,12 +5,10 @@
 import configparser
 import os
 import re
-import io
-import codecs
+import socket
 
 from xlog import getLogger
 xlog = getLogger("gae_proxy")
-
 
 
 class Config(object):
@@ -26,24 +24,24 @@ class Config(object):
         self.CONFIG.read(self.CONFIG_FILENAME)
 
         # load ../../../data/manual.ini, set by manual
+        self.MANUAL_LOADED = False
         self.CONFIG_MANUAL_FILENAME = os.path.abspath( os.path.join(self.DATA_PATH, 'manual.ini'))
         if os.path.isfile(self.CONFIG_MANUAL_FILENAME):
             try:
                 self.CONFIG.read(self.CONFIG_MANUAL_FILENAME)
-                xlog.info("load manual.ini success")
+                self.MANUAL_LOADED = 'manual.ini'
             except Exception as e:
                 xlog.exception("data/manual.ini load error:%s", e)
 
         self.LISTEN_IP = self.CONFIG.get('listen', 'ip')
         self.LISTEN_PORT = self.CONFIG.getint('listen', 'port')
+        self.LISTEN_USERNAME = self.CONFIG.get('listen', 'username') if self.CONFIG.has_option('listen', 'username') else ''
+        self.LISTEN_PASSWORD = self.CONFIG.get('listen', 'password') if self.CONFIG.has_option('listen', 'password') else ''
         self.LISTEN_VISIBLE = self.CONFIG.getint('listen', 'visible')
         self.LISTEN_DEBUGINFO = self.CONFIG.getint('listen', 'debuginfo')
 
         self.PUBLIC_APPIDS = [x.strip() for x in self.CONFIG.get('gae', 'public_appid').split("|")]
-        if self.CONFIG.get('gae', 'appid'):
-            self.GAE_APPIDS = [x.strip() for x in self.CONFIG.get('gae', 'appid').split("|")]
-        else:
-            self.GAE_APPIDS = []
+        self.GAE_APPIDS = [x.strip() for x in self.CONFIG.get('gae', 'appid').split("|")] if self.CONFIG.get('gae', 'appid') else []
         self.GAE_PASSWORD = self.CONFIG.get('gae', 'password').strip()
 
         fwd_endswith = []
@@ -85,20 +83,16 @@ class Config(object):
         self.PAC_PORT = self.CONFIG.getint('pac', 'port')
         self.PAC_FILE = self.CONFIG.get('pac', 'file').lstrip('/')
         self.PAC_GFWLIST = self.CONFIG.get('pac', 'gfwlist')
-        self.PAC_ADBLOCK = self.CONFIG.get('pac', 'adblock') if self.CONFIG.has_option('pac', 'adblock') else ''
+        self.PAC_ADMODE = self.CONFIG.getint('pac', 'admode')
+        self.PAC_ADBLOCK = self.CONFIG.get('pac', 'adblock') if self.PAC_ADMODE else 0
         self.PAC_EXPIRED = self.CONFIG.getint('pac', 'expired')
-        self.pac_url = 'http://%s:%d/%s\n' % (self.PAC_IP, self.PAC_PORT, self.PAC_FILE)
-
-        self.CONTROL_ENABLE = self.CONFIG.getint('control', 'enable')
-        self.CONTROL_IP = self.CONFIG.get('control', 'ip')
-        self.CONTROL_PORT = self.CONFIG.getint('control', 'port')
 
         self.PROXY_ENABLE = self.CONFIG.getint('proxy', 'enable')
         self.PROXY_TYPE = self.CONFIG.get('proxy', 'type')
         self.PROXY_HOST = self.CONFIG.get('proxy', 'host')
         self.PROXY_PORT = self.CONFIG.get('proxy', 'port')
         if self.PROXY_PORT == "":
-            self.PROXY_PORT = 0
+            self.PROXY_PORT = 80
         else:
             self.PROXY_PORT = int(self.PROXY_PORT)
         self.PROXY_USER = self.CONFIG.get('proxy', 'user')
@@ -114,17 +108,30 @@ class Config(object):
         self.record_ip_history = self.CONFIG.getint('google_ip', 'record_ip_history')
 
         self.https_max_connect_thread = config.CONFIG.getint("connect_manager", "https_max_connect_thread")
-        self.connect_interval = config.CONFIG.getint("connect_manager", "connect_interval")
 
         self.log_file = config.CONFIG.getint("system", "log_file")
-
+        self.log_scan = config.CONFIG.getint("system", "log_scan") if config.CONFIG.has_option("system", "log_scan") else False
 
         # change to True when finished import CA cert to browser
         # launcher will wait import ready then open browser to show status, check update etc
         self.cert_import_ready = False
 
 
+    @staticmethod
+    def get_listen_ip():
+        listen_ip = '127.0.0.1'
+        sock = None
+        try:
+            sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+            sock.connect(('8.8.8.8', 53))
+            listen_ip = sock.getsockname()[0]
+        except StandardError:
+            pass
+        finally:
+            if sock:
+                sock.close()
+        return listen_ip
+
 
 config = Config()
 config.load()
-

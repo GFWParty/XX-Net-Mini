@@ -131,7 +131,7 @@ class SSLCert:
 class CertUtil(object):
     """CertUtil module, based on mitmproxy"""
 
-    ca_vendor = 'GoAgent' #TODO: here should be XX-Mini
+    ca_vendor = 'GoAgent' #TODO: here should be XX-Mini-P3
     ca_keyfile = os.path.join(data_path, 'CA.crt')
     ca_thumbprint = ''
     ca_certdir = os.path.join(data_path, 'certs')
@@ -149,7 +149,7 @@ class CertUtil(object):
         subj.localityName = 'Cernet'
         subj.organizationName = CertUtil.ca_vendor
         subj.organizationalUnitName = '%s Root' % CertUtil.ca_vendor
-        subj.commonName = '%s XX-Mini' % CertUtil.ca_vendor #TODO: here should be GoAgent
+        subj.commonName = '%s XX-Mini-P3' % CertUtil.ca_vendor #TODO: here should be GoAgent
         req.set_pubkey(key)
         req.sign(key, CertUtil.ca_digest)
         ca = OpenSSL.crypto.X509()
@@ -366,7 +366,7 @@ class CertUtil(object):
     def import_debian_ca(common_name, ca_file):
 
         def get_debian_ca_sha1(nss_path):
-            commonname = "GoAgent XX-Mini - GoAgent" #TODO: here should be GoAgent - XX-Mini
+            commonname = "GoAgent XX-Mini-P3 - GoAgent" #TODO: here should be GoAgent - XX-Mini-P3
 
             cmd = ['certutil', '-L','-d', 'sql:%s' % nss_path, '-n', commonname]
             lines = get_cmd_out(cmd)
@@ -454,7 +454,7 @@ class CertUtil(object):
 
     @staticmethod
     def import_mac_ca(common_name, certfile):
-        commonname = "GoAgent XX-Mini" #TODO: need check again
+        commonname = "GoAgent XX-Mini-P3" #TODO: need check again
         ca_hash = CertUtil.ca_thumbprint.replace(':', '')
 
         def get_exist_ca_sha1():
@@ -470,7 +470,7 @@ class CertUtil(object):
             xlog.info("GoAgent CA exist")
             return
 
-        import_command = 'security add-trusted-cert -d -r trustRoot -k /Library/Keychains/System.keychain ../../data/gae_proxy/CA.crt'# % certfile.decode('utf-8')
+        import_command = 'security add-trusted-cert -d -r trustRoot -k /Library/Keychains/System.keychain ./data/CA.crt'# % certfile.decode('utf-8')
         if exist_ca_sha1:
             delete_ca_command = 'security delete-certificate -Z %s' % exist_ca_sha1
             exec_command = "%s;%s" % (delete_ca_command, import_command)
@@ -484,7 +484,7 @@ class CertUtil(object):
 
     @staticmethod
     def import_ca(certfile):
-        commonname = "GoAgent XX-Mini - GoAgent" #TODO: here should be GoAgent - XX-Mini
+        commonname = "GoAgent XX-Mini-P3 - GoAgent" #TODO: here should be GoAgent - XX-Mini-P3
         if sys.platform.startswith('win'):
             CertUtil.import_windows_ca(commonname, certfile)
         elif sys.platform == 'darwin':
@@ -542,5 +542,5 @@ if __name__ == '__main__':
 
 
 #TODO:
-# CA commaon should be GoAgent, vander should be XX-Mini
+# CA commaon should be GoAgent, vander should be XX-Mini-P3
 # need change and test on all support platform: Windows/Mac/Ubuntu/Debian

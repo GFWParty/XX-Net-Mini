@@ -21,7 +21,7 @@ NOTSET = 0
 
 
 class Logger():
-    def __init__(self, buffer_size=0, file_name=None, roll_num=1):
+    def __init__(self, log_time=True, buffer_size=0, file_name=None, roll_num=1):
         self.file_max_size = 1024 * 1024
         self.buffer_lock = threading.Lock()
         self.buffer = {} # id => line
@@ -31,8 +31,16 @@ class Logger():
         self.log_fd = None
         self.set_color()
         self.roll_num = roll_num
+        self.log_time = log_time
+        self.log_debug = False
         if file_name:
             self.set_file(file_name)
+
+    def set_time(self):
+        self.log_time = True
+
+    def set_debug(self):
+        self.log_debug = True
 
     def set_buffer(self, buffer_size):
         self.buffer_size = buffer_size
@@ -61,7 +69,7 @@ class Logger():
             if os.name == 'nt':
                 self.err_color = 0x04
                 self.warn_color = 0x06
-                self.debug_color = 0x002
+                self.debug_color = 0x02
                 self.reset_color = 0x07
         
                 import ctypes
@@ -104,7 +112,7 @@ class Logger():
     def log(self, level, console_color, html_color, fmt, *args, **kwargs):
         now = datetime.now()
         time_str = now.strftime("%b %d %H:%M:%S.%f")[:19]
-        string = '%s - [%s] %s\n' % (time_str, level, fmt % args)
+        string = '%s - [%s] %s\n' % (time_str, level, fmt % args) if self.log_time else '%s\n' % (fmt % args)
         self.buffer_lock.acquire()
         try:
             self.set_console_color(console_color)
@@ -143,7 +151,7 @@ class Logger():
             self.buffer_lock.release()
 
     def debug(self, fmt, *args, **kwargs):
-        if self.min_level > DEBUG:
+        if self.min_level > DEBUG or not self.log_debug:
             return
         self.log('DEBUG', self.debug_color, '21610b', fmt, *args, **kwargs)
     
@@ -231,7 +239,7 @@ class Logger():
 loggerDict = {}
 
 
-def getLogger(name=None, buffer_size=0, file_name=None, roll_num=1):
+def getLogger(name=None, log_time=False, buffer_size=0, file_name=None, roll_num=1):
     global loggerDict
 
     if not isinstance(name, str):
@@ -242,6 +250,6 @@ def getLogger(name=None, buffer_size=0, file_name=None, roll_num=1):
     if name in loggerDict:
         return loggerDict[name]
     else:
-        logger_instance = Logger(buffer_size, file_name, roll_num)
+        logger_instance = Logger(log_time, buffer_size, file_name, roll_num)
         loggerDict[name] = logger_instance
         return logger_instance

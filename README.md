@@ -16,7 +16,7 @@
 * 双击 addto-startup.js 脚本可以添加开机启动项
 
 ### Linux：
-* 下载 Linux 版本解压后，打开终端，定位到 XX-Mini 目录，输入 `python proxy.py` 等待一段时间扫描IP
+* 下载 Linux 版本解压后，打开终端，定位到 XX-Mini 目录，输入 `python3 proxy.py` 等待一段时间扫描IP
 * 之后设置浏览器代理为：127.0.0.1，端口：8087，支持pac自动代理的设置为 `http://127.0.0.1:8086/proxy.pac`
 * 接下来即可使用浏览器翻墙，但公共appid不允许观看视频和下载
 * 在 XX-Mini 目录，输入 `python addto-startup.py` 可以添加系统启动项
@@ -26,14 +26,21 @@
 * 修改压缩包后缀 zip 为 egg 即可
 
 ### proxy.ini 配置文件说明：
+建议大家在 data 目录新建一份 manual.ini 文件，优先级大于 proxy.ini 设置，避免升级的时候设置丢失。
 ```ini
 [listen]
 ;监听地址，如果需要允许局域网/公网使用，设为0.0.0.0即可，若共享pac此项必须设置为 0.0.0.0
 ip = 127.0.0.1
 ;默认使用8087作为代理端口，如有需要可以修改
 port = 8087
+;局域网代理认证用户名，留空不开启认证
+username =
+;代理认证密码
+password =
 ;启动后是否隐藏 goagent 窗口，0为隐藏（最小化至托盘），1为显示
 visible = 0
+;是否显示详细debug信息
+debuginfo = 0
 
 [gae]
 ;添加你自己的appid，多个用竖线 | 分隔
@@ -111,7 +118,9 @@ https_connection_pool_min = 5
 ;最大连接池数值
 https_connection_pool_max = 50
 
-;设置成 1 会在data目录生成日志文件 local.log，便调试用
 [system]
+;设置成 1 会在data目录生成日志文件 local.log，便调试用
 log_file = 0
+;设置是否在data目录输出扫描IP日志 scan_ip.log，超过3000行会新建日志
+log_scan = 1
 ```
