@@ -216,7 +216,7 @@ def main():
         pac_thread.setDaemon(True)
         pac_thread.start()
         try:
-            urllib2.urlopen('http://127.0.0.1:%d/%s' % (config.PAC_PORT, config.PAC_FILE))
+            urllib.request.urlopen('http://127.0.0.1:%d/%s' % (config.PAC_PORT, config.PAC_FILE))
         except:
             pass
 
