@@ -5,9 +5,7 @@
 import ConfigParser
 import os
 import re
-import io
 import socket
-
 
 from xlog import getLogger
 xlog = getLogger("gae_proxy")
@@ -31,13 +29,11 @@ class Config(object):
         self.MANUAL_LOADED = False
         self.CONFIG_MANUAL_FILENAME = os.path.abspath( os.path.join(self.DATA_PATH, 'manual.ini'))
         if os.path.isfile(self.CONFIG_MANUAL_FILENAME):
-            with open(self.CONFIG_MANUAL_FILENAME, 'rb') as fp:
-                content = fp.read()
-                try:
-                    self.CONFIG.readfp(io.BytesIO(content))
-                    self.MANUAL_LOADED = 'manual.ini'
-                except Exception as e:
-                    xlog.exception("data/manual.ini load error:%s", e)
+            try:
+                self.CONFIG.read(self.CONFIG_MANUAL_FILENAME)
+                self.MANUAL_LOADED = 'manual.ini'
+            except Exception as e:
+                xlog.exception("data/manual.ini load error:%s", e)
 
         self.LISTEN_IP = self.CONFIG.get('listen', 'ip')
         self.LISTEN_PORT = self.CONFIG.getint('listen', 'port')

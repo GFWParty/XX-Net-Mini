@@ -22,6 +22,7 @@ NOTSET = 0
 
 class Logger():
     def __init__(self, log_time=True, buffer_size=0, file_name=None, roll_num=1):
+        self.file_max_size = 1024 * 1024
         self.buffer_lock = threading.Lock()
         self.buffer = {} # id => line
         self.buffer_size = buffer_size
@@ -80,8 +81,13 @@ class Logger():
 
     def set_file(self, file_name):
         self.log_filename = file_name
-        if os.path.isfile(file_name) and os.path.getsize(file_name) > 1024 * 1024:
-            self.roll_log()
+        if os.path.isfile(file_name):
+            self.file_size = os.path.getsize(file_name)
+            if self.file_size > self.file_max_size:
+                self.roll_log()
+                self.file_size = 0
+        else:
+            self.file_size = 0
 
         self.log_fd = open(file_name, "w")
 
@@ -137,9 +143,7 @@ class Logger():
             self.buffer_lock.release()
 
     def debug(self, fmt, *args, **kwargs):
-        if not self.log_debug:
-            return
-        if self.min_level > DEBUG:
+        if self.min_level > DEBUG or not self.log_debug:
             return
         self.log('DEBUG', self.debug_color, '21610b', fmt, *args, **kwargs)
 

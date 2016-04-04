@@ -93,12 +93,10 @@ class IpManager():
     def load_config(self):
         if config.USE_IPV6:
             good_ip_file_name = "good_ipv6.txt"
-            default_good_ip_file_name = "good_ipv6.txt"
             self.max_scan_ip_thread_num = 0
             self.auto_adjust_scan_ip_thread_num = 0
         else:
             good_ip_file_name = "good_ip.txt"
-            default_good_ip_file_name = "good_ip.txt"
             self.max_scan_ip_thread_num = config.CONFIG.getint("google_ip", "max_scan_ip_thread_num") #50
             self.auto_adjust_scan_ip_thread_num = config.CONFIG.getint("google_ip", "auto_adjust_scan_ip_thread_num")
 
@@ -308,7 +306,7 @@ class IpManager():
         finally:
             self.ip_lock.release()
 
-    def add_ip(self, ip, handshake_time, domain=None, server='', fail_times=0, over_handshake=1):
+    def add_ip(self, ip, handshake_time, domain=None, server='', fail_times=0):
         if not isinstance(ip, basestring):
             xlog.error("add_ip input")
             return
@@ -322,7 +320,7 @@ class IpManager():
         self.ip_lock.acquire()
         try:
             if ip in self.ip_dict:
-                if over_handshake: self.ip_dict[ip]['handshake_time'] = handshake_time
+                self.ip_dict[ip]['handshake_time'] = handshake_time
                 self.ip_dict[ip]['fail_times'] = fail_times
                 if self.ip_dict[ip]['fail_time'] > 0:
                     self.ip_dict[ip]['fail_time'] = 0

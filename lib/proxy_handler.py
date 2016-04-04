@@ -12,7 +12,6 @@ import base64
 import OpenSSL
 NetWorkIOError = (socket.error, ssl.SSLError, OpenSSL.SSL.Error, OSError)
 
-
 from xlog import getLogger
 xlog = getLogger("gae_proxy")
 import simple_http_client
@@ -77,6 +76,37 @@ class GAEProxyHandler(simple_http_server.HttpServerHandler):
         self.__class__.do_DELETE = self.__class__.do_METHOD
         self.__class__.do_OPTIONS = self.__class__.do_METHOD
 
+    def forward_local(self):
+        host = self.headers.get('Host', '')
+        host_ip, _, port = host.rpartition(':')
+        http_client = simple_http_client.HTTP_client((host_ip, int(port)))
+        request_headers = dict((k.title(), v) for k, v in self.headers.items())
+        payload = b''
+        if 'Content-Length' in request_headers:
+            try:
+                payload_len = int(request_headers.get('Content-Length', 0))
+                payload = self.rfile.read(payload_len)
+            except Exception as e:
+                xlog.warn('forward_local read payload failed:%s', e)
+                return
+        self.parsed_url = urlparse.urlparse(self.path)
+        if len(self.parsed_url[4]):
+            path = '?'.join([self.parsed_url[2], self.parsed_url[4]])
+        else:
+            path = self.parsed_url[2]
+        content, status, response = http_client.request(self.command, path, request_headers, payload)
+        if not status:
+            xlog.warn("forward_local fail")
+            return
+        out_list = []
+        out_list.append("HTTP/1.1 %d\r\n" % status)
+        for key, value in response.getheaders():
+            key = key.title()
+            out_list.append("%s: %s\r\n" % (key, value))
+        out_list.append("\r\n")
+        out_list.append(content)
+        self.wfile.write("".join(out_list))
+
     def do_METHOD(self):
         touch_active()
 
@@ -89,6 +119,9 @@ class GAEProxyHandler(simple_http_server.HttpServerHandler):
             self.path = 'http://%s%s' % (host, self.path)
         elif not host and '://' in self.path:
             host = urlparse.urlparse(self.path).netloc
+
+        if host.startswith("127.0.0.1") or host.startswith("localhost"):
+            return self.forward_local()
 
         self.parsed_url = urlparse.urlparse(self.path)
 
