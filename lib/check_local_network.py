@@ -135,6 +135,8 @@ def _simple_check_worker():
             socket.socket = default_socket
             xlog.debug("restore socket")
 
+_simple_check_worker()
+
 
 def triger_check_network(force=False):
     global _checking_lock, _checking_num, network_stat, last_check_time
