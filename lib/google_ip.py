@@ -210,7 +210,7 @@ class IpManager():
         else:
             try:
                 the_100th_ip = self.gws_ip_list[99]
-                the_100th_handshake_time = self.ip_dict[the_100th_ip]['handshake_time']
+                the_100th_handshake_time = self.ip_dict[the_100th_ip]['handshake_time'] + self.ip_dict[the_100th_ip]['fail_times'] * 1000
                 scan_ip_thread_num = int( (the_100th_handshake_time - 200)/2 * self.max_scan_ip_thread_num/50 )
             except Exception as e:
                 xlog.warn("adjust_scan_thread_num fail:%r", e)
