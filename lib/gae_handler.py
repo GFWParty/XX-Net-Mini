@@ -324,7 +324,7 @@ def handler(method, url, headers, body, wfile):
                     xlog.warn('gae_handler.handler %r %s , retry...', e, url)
                     continue
             else:
-                xlog.info('good ip num:%d, bad ip num:%s', google_ip.max_good_ip_num if google_ip.good_ip_num > google_ip.max_good_ip_num else google_ip.good_ip_num, google_ip.bad_ip_num)
+                xlog.info('good ip num:%d, bad ip num:%s', google_ip.good_ip_num, google_ip.bad_ip_num)
 
             if response.app_status == 404:
                 #xlog.warning('APPID %r not exists, remove it.', response.ssl_sock.appid)
