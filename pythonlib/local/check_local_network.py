@@ -120,7 +120,7 @@ def _simple_check_worker():
             xlog.debug("network is ok, cost:%d ms", 1000*(time.time() - time_now))
             return True
     except Exception as e:
-        xlog.exception("simple check network fail:%r", e)
+        xlog.warn("simple check network fail:%r", e)
         network_stat = "Fail"
         last_check_time = time.time()
         return False
