@@ -123,6 +123,10 @@ class GAEProxyHandler(simple_http_server.HttpServerHandler):
         if host.startswith("127.0.0.1") or host.startswith("localhost"):
             return self.forward_local()
 
+        if host_ip == config.get_listen_ip():
+            xlog.info("Browse localhost by proxy")
+            return self.forward_local()
+
         self.parsed_url = urlparse.urlparse(self.path)
 
         if host in config.HOSTS_GAE:
