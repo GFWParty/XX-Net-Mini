@@ -107,7 +107,7 @@ class GAEProxyHandler(simple_http_server.HttpServerHandler):
             out_list.append(("%s: %s\r\n" % (key, value)).encode('iso-8859-1'))
         out_list.append(b"\r\n")
         out_list.append(content)
-        self.wfile.write(b"".join(out_list))
+        if content: self.wfile.write(b"".join(out_list))
 
     def do_METHOD(self):
         touch_active()
@@ -128,6 +128,10 @@ class GAEProxyHandler(simple_http_server.HttpServerHandler):
             host = urllib.parse.urlparse(self.path).netloc
 
         if host.startswith("127.0.0.1") or host.startswith("localhost"):
+            return self.forward_local()
+
+        if host_ip == config.get_listen_ip():
+            xlog.info("Browse localhost by proxy")
             return self.forward_local()
 
         self.parsed_url = urllib.parse.urlparse(self.path)
