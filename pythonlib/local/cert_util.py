@@ -381,7 +381,7 @@ class CertUtil(object):
                     sha1 = line
                     break
 
-            sha1 = sha1.replace(b' ', b'').replace(b':', b'').replace(b'\n', b'')
+            if sha1: sha1 = sha1.replace(b' ', b'').replace(b':', b'').replace(b'\n', b'')
             if len(sha1) != 40:
                 return False
             else:

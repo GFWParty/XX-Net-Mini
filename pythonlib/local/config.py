@@ -28,7 +28,7 @@ class Config(object):
         self.CONFIG_MANUAL_FILENAME = os.path.abspath( os.path.join(self.DATA_PATH, 'manual.ini'))
         if os.path.isfile(self.CONFIG_MANUAL_FILENAME):
             try:
-                self.CONFIG.read(self.CONFIG_MANUAL_FILENAME)
+                self.CONFIG.read(self.CONFIG_MANUAL_FILENAME, encoding='iso-8859-1')
                 self.MANUAL_LOADED = 'manual.ini'
             except Exception as e:
                 xlog.exception("data/manual.ini load error:%s", e)
