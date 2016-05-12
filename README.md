@@ -60,11 +60,9 @@ www.google.com = direct
 ;下载分流，建议使用默认值
 [autorange]
 ;线程数，当观看视频不流畅可适当增加
-threads = 8
+threads = 20
 ;分块大小，如果IP质量好可以修改 maxsize 为更大的数值
-maxsize = 524288
-waitsize = 1048576
-bufsize = 65536
+maxsize = 548576
 
 ;pac 自动配置脚本
 [pac]
@@ -114,10 +112,12 @@ max_links_per_ip = 1
 [connect_manager]
 ;最大连接线程
 https_max_connect_thread = 10
+;每次添加的新连接池数
+https_new_connect_num = 3
 ;最小连接池数值
-https_connection_pool_min = 5
+https_connection_pool_min = 1
 ;最大连接池数值
-https_connection_pool_max = 50
+https_connection_pool_max = 30
 
 [system]
 ;设置成 1 会在data目录生成日志文件 local.log，便调试用
