@@ -122,7 +122,7 @@ class IpManager():
         if os.path.isfile(self.good_ip_file):
             file_path = self.good_ip_file
         else:
-            file_path = self.default_good_ip_file
+            return
 
         with open(file_path, "r") as fd:
             lines = fd.readlines()
