@@ -33,7 +33,7 @@
 #      cnfuyu            <cnfuyu@gmail.com>
 #      cuixin            <steven.cuixin@gmail.com>
 
-__version__ = '1.2.6'
+__version__ = '1.2.7'
 
 import sys
 import os
@@ -61,10 +61,10 @@ elif sys.platform == "darwin":
 
 from config import config
 from OpenSSL import version as openssl_version
+
 from xlog import getLogger
 xlog = getLogger("gae_proxy")
 xlog.set_buffer(500)
-
 if config.log_file:
     log_file = os.path.join(data_path, "local.log")
     xlog.set_file(log_file)
@@ -83,7 +83,7 @@ def summary():
     info += '\nXX-Mini Version     : %s (python/%s pyopenssl/%s)\n' % (__version__, sys.version.split()[0], openssl_version.__version__)
     info += 'Listen Address      : %s:%d\n' % (config.LISTEN_IP if config.LISTEN_IP == '127.0.0.1' else config.get_listen_ip(), config.LISTEN_PORT)
     info += 'Setting File        : %sproxy.ini\n' % (config.MANUAL_LOADED + '/' if config.MANUAL_LOADED else '')
-    info += '%s Proxy     : %s:%s\n' % (config.PROXY_TYPE, config.PROXY_HOST, config.PROXY_PORT) if config.PROXY_ENABLE else ''
+    info += '%s Proxy %s : %s:%s\n' % (config.PROXY_TYPE, ' '*(12-len(config.PROXY_TYPE)), config.PROXY_HOST, config.PROXY_PORT) if config.PROXY_ENABLE else ''
     info += 'GAE APPID           : %s\n' % appids
     info += 'Pac Server          : http://%s:%d/%s\n' % (pac_ip, config.PAC_PORT, config.PAC_FILE) if config.PAC_ENABLE else ''
     info += 'CA File             : http://%s:%d/%s\n' % (pac_ip, config.PAC_PORT, 'CA.crt') if config.PAC_ENABLE else ''

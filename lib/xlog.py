@@ -104,10 +104,10 @@ class Logger():
             if not os.path.isfile(old_name):
                 continue
 
-            self.info("roll_log %s -> %s", old_name, new_name)
+            #self.info("roll_log %s -> %s", old_name, new_name)
             shutil.move(old_name, new_name)
 
-        shutil.move(self.log_filename, self.log_filename + ".0")
+        shutil.move(self.log_filename, self.log_filename + ".1")
 
     def log(self, level, console_color, html_color, fmt, *args, **kwargs):
         now = datetime.now()
@@ -116,7 +116,10 @@ class Logger():
         self.buffer_lock.acquire()
         try:
             self.set_console_color(console_color)
-            sys.stderr.write(string)
+            try:
+                sys.stderr.write(string)
+            except:
+                pass
             self.set_console_color(self.reset_color)
 
             if self.log_fd:
@@ -126,6 +129,14 @@ class Logger():
                 except:
                     pass
 
+                self.file_size += len(string)
+                if self.file_size > self.file_max_size:
+                    self.log_fd.close()
+                    self.log_fd = None
+                    self.roll_log()
+                    self.log_fd = open(self.log_filename, "w")
+                    self.file_size = 0
+
             if self.buffer_size:
                 self.last_no += 1
                 self.buffer[self.last_no] = string
@@ -133,7 +144,7 @@ class Logger():
                 if buffer_len > self.buffer_size:
                     del self.buffer[self.last_no - self.buffer_size]
         except Exception as e:
-            string = '%s - [%s]LOG_EXCEPT: %s, Except:%s<br>' % (time.ctime()[4:-5], level, fmt % args, e)
+            string = '%s - [%s]LOG_EXCEPT: %s, Except:%s<br> %s' % (time.ctime()[4:-5], level, fmt % args, e, traceback.format_exc())
             self.last_no += 1
             self.buffer[self.last_no] = string
             buffer_len = len(self.buffer)

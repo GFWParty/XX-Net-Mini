@@ -75,10 +75,8 @@ class Config(object):
         self.HOSTS_DIRECT_ENDSWITH = tuple(direct_endswith)
         self.HOSTS_DIRECT = tuple(direct_hosts)
 
-        self.AUTORANGE_MAXSIZE = self.CONFIG.getint('autorange', 'maxsize')
-        self.AUTORANGE_WAITSIZE = self.CONFIG.getint('autorange', 'waitsize')
-        self.AUTORANGE_BUFSIZE = self.CONFIG.getint('autorange', 'bufsize')
         self.AUTORANGE_THREADS = self.CONFIG.getint('autorange', 'threads')
+        self.AUTORANGE_MAXSIZE = self.CONFIG.getint('autorange', 'maxsize')
 
         self.PAC_ENABLE = self.CONFIG.getint('pac', 'enable')
         self.PAC_IP = self.CONFIG.get('pac', 'ip')
@@ -104,12 +102,12 @@ class Config(object):
         self.LOVE_TIP = self.CONFIG.get('love', 'tip').encode('utf8').decode('unicode-escape').split('|')
 
         self.USE_IPV6 = self.CONFIG.getint('google_ip', 'use_ipv6')
-        self.ip_traffic_quota = self.CONFIG.getint('google_ip', 'ip_traffic_quota')
-        self.ip_traffic_quota_base = self.CONFIG.getint('google_ip', 'ip_traffic_quota_base')
         self.max_links_per_ip = self.CONFIG.getint('google_ip', 'max_links_per_ip')
         self.record_ip_history = self.CONFIG.getint('google_ip', 'record_ip_history')
 
         self.https_max_connect_thread = config.CONFIG.getint("connect_manager", "https_max_connect_thread")
+        self.connect_interval = config.CONFIG.getint("connect_manager", "connect_interval")
+        self.max_worker_num = config.CONFIG.getint("connect_manager", "max_worker_num")
 
         self.log_file = config.CONFIG.getint("system", "log_file")
         self.log_scan = config.CONFIG.getint("system", "log_scan") if config.CONFIG.has_option("system", "log_scan") else False

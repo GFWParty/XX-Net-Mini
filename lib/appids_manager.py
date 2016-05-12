@@ -30,8 +30,10 @@ class APPID_manager(object):
 
     def get_appid(self):
         if len(self.working_appid_list) == 0:
-            if time.time() - self.last_reset_time < 600:
-                xlog.warn("all appid out of quota, need 10 min to reset")
+            time_to_reset = 600 - (time.time() - self.last_reset_time)
+            if time_to_reset > 0:
+                xlog.warn("all appid out of quota, wait %d seconds to reset", time_to_reset)
+                time.sleep(time_to_reset)
                 return None
             else:
                 xlog.warn("reset appid")
@@ -44,7 +46,10 @@ class APPID_manager(object):
         with self.lock:
             if appid not in self.out_of_quota_appids:
                 self.out_of_quota_appids.append(appid)
-            self.working_appid_list.remove(appid)
+            try:
+                self.working_appid_list.remove(appid)
+            except:
+                pass
 
     def report_not_exist(self, appid, ip):
         xlog.debug("report_not_exist:%s %s", appid, ip)
@@ -52,7 +57,8 @@ class APPID_manager(object):
         th.start()
 
     def process_appid_not_exist(self, appid, ip):
-        if check_ip.test_gae_ip(ip, "xxnet-1"):
+        ret = check_ip.test_gae_ip2(ip, "xxnet-1")
+        if ret and ret.support_gae:
             self.set_appid_not_exist(appid)
         else:
             xlog.warn("process_appid_not_exist, remove ip:%s", ip)
@@ -64,8 +70,8 @@ class APPID_manager(object):
         with self.lock:
             if appid not in self.not_exist_appids:
                 self.not_exist_appids.append(appid)
-                self.working_appid_list.remove(appid)
                 try:
+                    self.working_appid_list.remove(appid)
                     config.GAE_APPIDS.remove(appid)
                     config.PUBLIC_APPIDS.remove(appid)
                 except:

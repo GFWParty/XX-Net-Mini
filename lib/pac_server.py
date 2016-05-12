@@ -8,7 +8,6 @@ import re
 import thread
 import urllib2
 import urlparse
-import socket
 import simple_http_server
 
 from config import config
@@ -394,4 +393,3 @@ class PACServerHandler(simple_http_server.HttpServerHandler):
         else:
             xlog.warn("PACServer GET %s fail", filename)
             return self.wfile.write(('HTTP/1.1 404\r\nContent-Length: 0\r\n\r\n').encode())
-

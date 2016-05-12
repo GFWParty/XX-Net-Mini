@@ -22,7 +22,6 @@ from config import config
 from xlog import getLogger
 xlog = getLogger("gae_proxy")
 
-#"GAE", "Google Frontend", "GSE", "GFE/2.0",
 google_server_types = ["ClientMapServer"]
 
 
@@ -31,20 +30,19 @@ def send_header(wfile, keyword, value):
     if keyword == 'Set-Cookie':
         for cookie in re.split(r', (?=[^ =]+(?:=|$))', value):
             wfile.write("%s: %s\r\n" % (keyword, cookie))
-            #logging.debug("Head1 %s: %s", keyword, cookie)
+            #xlog.debug("Head1 %s: %s", keyword, cookie)
     elif keyword == 'Content-Disposition' and '"' not in value:
         value = re.sub(r'filename=([^"\']+)', 'filename="\\1"', value)
         wfile.write("%s: %s\r\n" % (keyword, value))
-        #logging.debug("Head1 %s: %s", keyword, value)
+        #xlog.debug("Head1 %s: %s", keyword, value)
     elif keyword == "Alternate-Protocol":
         return
     else:
-        #logging.debug("Head1 %s: %s", keyword, value)
+        #xlog.debug("Head1 %s: %s", keyword, value)
         wfile.write("%s: %s\r\n" % (keyword, value))
 
 
-
-def fetch(method, host, path, headers, payload, bufsize=8192):
+def fetch(method, host, path, headers, payload):
     request_data = '%s %s HTTP/1.1\r\n' % (method, path)
     request_data += ''.join('%s: %s\r\n' % (k, v) for k, v in headers.items())
     request_data += '\r\n'
@@ -123,7 +121,7 @@ def handler(method, host, url, headers, body, wfile):
         except Exception as e:
             send_to_browser = False
             wait_time = time.time()-time_request
-            xlog.warn("direct_handler.handler send response fail. t:%d e:%r %s%s", wait_time, e, host, url)
+            xlog.info("direct_handler.handler send response fail. t:%d e:%r %s%s", wait_time, e, host, url)
 
 
         if method == 'HEAD' or response.status in (204, 304):
@@ -156,7 +154,7 @@ def handler(method, host, url, headers, body, wfile):
                         wfile.write('\r\n')
                     except Exception as e:
                         send_to_browser = False
-                        xlog.warn("direct_handler.handler send Transfer-Encoding t:%d e:%r %s/%s", time.time()-time_request, e, host, url)
+                        xlog.info("direct_handler.handler send Transfer-Encoding t:%d e:%r %s/%s", time.time()-time_request, e, host, url)
                 else:
                     if not data:
                         break
@@ -180,7 +178,8 @@ def handler(method, host, url, headers, body, wfile):
                 xlog.info("DIRECT t:%d s:%d %d %s %s", (time.time()-time_request)*1000, length, response.status, host, url)
                 return
 
-            data = response.read(config.AUTORANGE_BUFSIZE)
+            to_read = end - start + 1
+            data = response.read(to_read)
             if not data:
                 if time.time() - time_last_read > 20:
                     google_ip.report_connect_closed(response.ssl_sock.ip, "receive fail")
@@ -202,9 +201,9 @@ def handler(method, host, url, headers, body, wfile):
                         ret = wfile.write(data)
                 except Exception as e_b:
                     if e_b[0] in (errno.ECONNABORTED, errno.EPIPE, errno.ECONNRESET) or 'bad write retry' in repr(e_b):
-                        xlog.warn('direct_handler send to browser return %r %s %r', e_b, host, url)
+                        xlog.info('direct_handler send to browser return %r %s %r', e_b, host, url)
                     else:
-                        xlog.warn('direct_handler send to browser return %r %s %r', e_b, host, url)
+                        xlog.info('direct_handler send to browser return %r %s %r', e_b, host, url)
                     send_to_browser = False
 
 

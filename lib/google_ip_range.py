@@ -15,15 +15,13 @@ random.seed(time.time()* 1000000)
 
 
 class IpRange(object):
-
     def __init__(self):
         self.default_range_file = os.path.join(current_path, "ip_range.txt")
         self.user_range_file = os.path.join(config.DATA_PATH, "ip_range.txt")
         self.load_ip_range()
 
-    def load_range_content(self):
-
-        if os.path.isfile(self.user_range_file):
+    def load_range_content(self, default=False):
+        if not default and os.path.isfile(self.user_range_file):
             self.range_file = self.user_range_file
         else:
             self.range_file = self.default_range_file
@@ -41,6 +39,12 @@ class IpRange(object):
     def update_range_content(self, content):
         with open(self.user_range_file, "w") as fd:
             fd.write(content)
+
+    def remove_user_range(self):
+        try:
+            os.remove(self.user_range_file)
+        except:
+            pass
 
     def load_ip_range(self):
         self.ip_range_map = {}
@@ -104,7 +108,7 @@ class IpRange(object):
         while True:
             index = random.randint(0, len(self.ip_range_list) - 1)
             ip_range = self.ip_range_list[index]
-            #logging.debug("random.randint %d - %d", ip_range[0], ip_range[1])
+            #xlog.debug("random.randint %d - %d", ip_range[0], ip_range[1])
             if ip_range[1] == ip_range[0]:
                 return ip_utils.ip_num_to_string(ip_range[1])
 
