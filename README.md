@@ -1,6 +1,6 @@
 # XX-Mini
 
-下载地址：https://git.io/XX-Mini
+下载地址：[![GitHub release](https://img.shields.io/github/release/xyuanmu/XX-Mini.svg)](https://git.io/XX-Mini)
 
 ## 软件说明
 * 源码取自 [XX-Net](https://github.com/XX-net/XX-Net) 项目，精简 web UI、php_proxy 以及 x_tunnel 等功能，只保留 gae_proxy 以及自动扫描IP功能。
