@@ -100,7 +100,7 @@ passwd =
 ;开启 IPv6 选项，1开启，0关闭，慎重！
 use_ipv6 = 0
 ;自动调整扫描线程数
-auto_adjust_scan_ip_thread_num = 1;
+auto_adjust_scan_ip_thread_num = 1
 ;扫描线程数，默认50，若出现网络连接缓慢可改小一点
 max_scan_ip_thread_num = 50
 ;谷歌IP上限，超过则剔除延时高的IP
